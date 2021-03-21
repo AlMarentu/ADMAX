@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>ADMAX</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout">
@@ -46,7 +46,7 @@
        </size>
       </property>
       <property name="title">
-       <string>GroupBox</string>
+       <string>Document</string>
       </property>
       <layout class="QGridLayout" name="gridLayout_3">
        <item row="0" column="0" colspan="3">
@@ -74,32 +74,52 @@
           <string>Tags</string>
          </property>
          <layout class="QGridLayout" name="gridLayout_2">
-          <item row="0" column="0">
-           <widget class="QLineEdit" name="lineEditTag1"/>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEditSearch1"/>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLineEdit" name="lineEditTag2"/>
-          </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="lineEditSearch2"/>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLineEdit" name="lineEditTag3"/>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="lineEditSearch4"/>
           </item>
           <item row="2" column="1">
            <widget class="QLineEdit" name="lineEditSearch3"/>
           </item>
-          <item row="3" column="0">
-           <widget class="QLineEdit" name="lineEditTag4"/>
-          </item>
-          <item row="3" column="1">
-           <widget class="QLineEdit" name="lineEditSearch4"/>
+          <item row="2" column="0">
+           <widget class="QComboBox" name="comboBoxTag3">
+            <property name="editable">
+             <bool>true</bool>
+            </property>
+           </widget>
           </item>
           <item row="4" column="0">
-           <widget class="QLineEdit" name="lineEditTag5"/>
+           <widget class="QComboBox" name="comboBoxTag5">
+            <property name="editable">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QComboBox" name="comboBoxTag4">
+            <property name="editable">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QComboBox" name="comboBoxTag1">
+            <property name="editable">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QComboBox" name="comboBoxTag2">
+            <property name="editable">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="lineEditSearch1"/>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="lineEditSearch2"/>
           </item>
           <item row="4" column="1">
            <widget class="QLineEdit" name="lineEditSearch5"/>
@@ -160,19 +180,6 @@
          </attribute>
         </widget>
        </item>
-       <item row="4" column="0">
-        <spacer name="horizontalSpacer_2">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>153</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
        <item row="1" column="3">
         <widget class="QLabel" name="label">
          <property name="text">
@@ -190,12 +197,25 @@
        <item row="0" column="3" colspan="3">
         <widget class="QLineEdit" name="lineEdit2"/>
        </item>
-       <item row="2" column="2" colspan="4">
+       <item row="2" column="1" colspan="5">
         <widget class="QLineEdit" name="lineEditName">
          <property name="readOnly">
           <bool>true</bool>
          </property>
         </widget>
+       </item>
+       <item row="4" column="0" colspan="2">
+        <spacer name="horizontalSpacer_2">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>153</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
        </item>
       </layout>
      </widget>
@@ -255,6 +275,26 @@
    <container>1</container>
   </customwidget>
  </customwidgets>
+ <tabstops>
+  <tabstop>lineEdit1</tabstop>
+  <tabstop>lineEdit2</tabstop>
+  <tabstop>pushButtonFile</tabstop>
+  <tabstop>lineEditName</tabstop>
+  <tabstop>comboBoxTag1</tabstop>
+  <tabstop>lineEditSearch1</tabstop>
+  <tabstop>comboBoxTag2</tabstop>
+  <tabstop>lineEditSearch2</tabstop>
+  <tabstop>comboBoxTag3</tabstop>
+  <tabstop>lineEditSearch3</tabstop>
+  <tabstop>comboBoxTag4</tabstop>
+  <tabstop>lineEditSearch4</tabstop>
+  <tabstop>comboBoxTag5</tabstop>
+  <tabstop>lineEditSearch5</tabstop>
+  <tabstop>pushButtonSave</tabstop>
+  <tabstop>pushButtonSearch</tabstop>
+  <tabstop>tableWidget</tabstop>
+  <tabstop>pushButtonGet</tabstop>
+ </tabstops>
  <resources/>
  <connections>
   <connection>

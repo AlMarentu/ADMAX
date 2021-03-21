@@ -59,34 +59,7 @@ inline std::basic_ios<char> &operator<<(std::basic_ios<char> &s, QString q) {
 
 
 //Objektdefinitionen
-class Fahrzeug : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(Fahrzeug);
 
-
-  MemVar(std::string, typ);
-  MemVar(int, achsen, USENULL);
-  MemVar(bool, antrieb);
-
-  void init() override { TRACE(""); };
-};
-
-
-class Gespann : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(Gespann);
-
-
-  MemVar(int, id, KEYELEMENT1);
-  MemVar(std::string, typ);
-  MemObj(Fahrzeug, zugmaschiene);
-  MemVector(Fahrzeug, haenger);
-
-  void init() override { TRACE(""); };
-};
-ObjRegister(Gespann);
 
 MOBS_ENUM_DEF(DocumenType, DocumentUnknown, DocumentPdf, DocumentJpeg, DocumentTiff, DocumentHtml, DocumentText);
 MOBS_ENUM_VAL(DocumenType, "unk",           "pdf",       "jpg",        "tif",        "htm",        "txt");
@@ -195,13 +168,23 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
   ui->setupUi(this);
-    ui->lineEditCnt->setText(QString::number(cnt));
-    logging::currentLevel = LM_INFO;
+  ui->lineEditCnt->setText(QString::number(cnt));
+  logging::currentLevel = LM_INFO;
   LOG(LM_INFO, "start");
+
+  QStringList initialItems;
+  initialItems << "" << tr("Name") << tr("Ablage") << tr("Schlagwort");
+
+  ui->comboBoxTag1->addItems(initialItems);
+  ui->comboBoxTag2->addItems(initialItems);
+  ui->comboBoxTag3->addItems(initialItems);
+  ui->comboBoxTag4->addItems(initialItems);
+  ui->comboBoxTag5->addItems(initialItems);
+
 
   ui->pushButtonSave->setEnabled(false);
 
-  ui->widget->showPdfFile(QString("../fritz.pdf"));
+//  ui->widget->showPdfFile(QString("../fritz.pdf"));
 //  ui->widget->showPdfFile("../Stunden.pdf");
 
 }
@@ -314,35 +297,35 @@ void MainWindow::save() {
       doc.creationTime(std::chrono::time_point_cast<std::chrono::microseconds>(tp));
     }
     std::string tag, val;
-    tag = ui->lineEditTag1->text().toUtf8().data();
+    tag = ui->comboBoxTag1->currentText().toUtf8().data();
     val = ui->lineEditSearch1->text().toUtf8().data();
     if (not tag.empty()) {
       auto &t1 = doc.tags[mobs::MemBaseVector::nextpos];
       t1.name(tag);
       t1.content(val);
     }
-    tag = ui->lineEditTag2->text().toUtf8().data();
+    tag = ui->comboBoxTag2->currentText().toUtf8().data();
     val = ui->lineEditSearch2->text().toUtf8().data();
     if (not tag.empty()) {
       auto &t1 = doc.tags[mobs::MemBaseVector::nextpos];
       t1.name(tag);
       t1.content(val);
     }
-    tag = ui->lineEditTag3->text().toUtf8().data();
+    tag = ui->comboBoxTag3->currentText().toUtf8().data();
     val = ui->lineEditSearch3->text().toUtf8().data();
     if (not tag.empty()) {
       auto &t1 = doc.tags[mobs::MemBaseVector::nextpos];
       t1.name(tag);
       t1.content(val);
     }
-    tag = ui->lineEditTag4->text().toUtf8().data();
+    tag = ui->comboBoxTag4->currentText().toUtf8().data();
     val = ui->lineEditSearch4->text().toUtf8().data();
     if (not tag.empty()) {
       auto &t1 = doc.tags[mobs::MemBaseVector::nextpos];
       t1.name(tag);
       t1.content(val);
     }
-    tag = ui->lineEditTag5->text().toUtf8().data();
+    tag = ui->comboBoxTag5->currentText().toUtf8().data();
     val = ui->lineEditSearch5->text().toUtf8().data();
     if (not tag.empty()) {
       auto &t1 = doc.tags[mobs::MemBaseVector::nextpos];
@@ -415,9 +398,9 @@ void MainWindow::loadFile() {
     }
     ui->lineEditName->setText(file);
     int pos = file.lastIndexOf('/');
-    ui->lineEditTag1->setText(tr("Name"));
-    ui->lineEditTag2->setText(tr("Ablage"));
-    ui->lineEditTag3->setText(tr("Schlagwort"));
+    ui->comboBoxTag1->setCurrentText(tr("Name"));
+    ui->comboBoxTag2->setCurrentText(tr("Ablage"));
+    ui->comboBoxTag3->setCurrentText(tr("Schlagwort"));
     ui->lineEditSearch1->setText(file.midRef(pos+1).toUtf8().data());
     ui->lineEditSearch2->clear();
     ui->lineEditSearch3->clear();
@@ -433,11 +416,11 @@ void MainWindow::searchDocument() {
   std::string s3 = ui->lineEditSearch3->text().toUtf8().data();
   std::string s4 = ui->lineEditSearch4->text().toUtf8().data();
   std::string s5 = ui->lineEditSearch5->text().toUtf8().data();
-  std::string t1 = ui->lineEditTag1->text().toUtf8().data();
-  std::string t2 = ui->lineEditTag2->text().toUtf8().data();
-  std::string t3 = ui->lineEditTag3->text().toUtf8().data();
-  std::string t4 = ui->lineEditTag4->text().toUtf8().data();
-  std::string t5 = ui->lineEditTag5->text().toUtf8().data();
+  std::string t1 = ui->comboBoxTag1->currentText().toUtf8().data();
+  std::string t2 = ui->comboBoxTag2->currentText().toUtf8().data();
+  std::string t3 = ui->comboBoxTag3->currentText().toUtf8().data();
+  std::string t4 = ui->comboBoxTag4->currentText().toUtf8().data();
+  std::string t5 = ui->comboBoxTag5->currentText().toUtf8().data();
   ui->tableWidget->clear();
   ui->tableWidget->setColumnCount(1);
   ui->tableWidget->setRowCount(0);
@@ -503,7 +486,15 @@ void MainWindow::searchDocument() {
               col = ui->tableWidget->columnCount();
               ui->tableWidget->setColumnCount(col +1);
               columns[j.name()] = col;
-              ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(QString::fromUtf8(j.name().c_str())));
+              auto tagName = QString::fromUtf8(j.name().c_str());
+              ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(tagName));
+              if (ui->comboBoxTag1->findText(tagName) < 0) {
+                ui->comboBoxTag1->addItem(tagName);
+                ui->comboBoxTag2->addItem(tagName);
+                ui->comboBoxTag3->addItem(tagName);
+                ui->comboBoxTag4->addItem(tagName);
+                ui->comboBoxTag5->addItem(tagName);
+              }
             } else
               col = it->second;
             LOG(LM_INFO, "T " << j.name() << "=" << j.content());
@@ -529,7 +520,10 @@ void MainWindow::searchDocument() {
 }
 
 void MainWindow::getDocument() {
-  loadDocument(1);
+//  loadDocument(1);
+  int row = ui->tableWidget->currentRow();
+  if (row >= 0)
+    searchRowClicked(row, 0);
 }
 
 
