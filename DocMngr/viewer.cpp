@@ -160,6 +160,7 @@ public:
   double yPos = 0.0;
   Poppler::Document* document = nullptr;
   std::list<PdfFormField> formFields;
+  QPixmap pixmap;
 };
 
 void MyLabel::paintEvent(QPaintEvent *event) {
@@ -235,7 +236,10 @@ void Viewer::showPdfFile(const QByteArray &bytes) {
 
 void Viewer::showDocument() {
 
-    QWidget *widget = new QWidget(this);
+  ui->horizontalSliderZoom->setRange(20, 150);
+  ui->horizontalSliderZoom->setValue(150);
+
+  QWidget *widget = new QWidget(this);
   data->grid = new QGridLayout(widget);
   ui->scrollArea->setWidget(widget);
 
@@ -276,10 +280,19 @@ void Viewer::setZoom(int z) {
   LOG(LM_INFO, "setZoom " << z << " " << ui->scrollArea->widget()->width() << "x" << ui->scrollArea->widget()->height() << " "
   << ui->scrollArea->widget()->x() << ", " << ui->scrollArea->widget()->y());
 
-  data->aktDpi = z;
-  double res = z;
-  for (auto &p:data->pages) {
-    p.resize(res);
+  if (data->document) {
+    data->aktDpi = z;
+    double res = z;
+    for (auto &p:data->pages) {
+      p.resize(res);
+    }
+  } else {
+    auto widget = dynamic_cast<QLabel *>(ui->scrollArea->widget());
+    if (widget) {
+      int a = data->pixmap.width() * z / 100;
+      LOG(LM_INFO, "Resie w=" << a);
+      widget->setPixmap(data->pixmap.scaledToWidth(a));
+    }
   }
 }
 
@@ -594,13 +607,18 @@ void Viewer::thumbReorg() {
 
 void Viewer::showPicture(const QPixmap &pixmap) {
   clearViewer();
-
+  data->pixmap = pixmap;
   QLabel *widget = new QLabel(this);
-  widget->setScaledContents(true);
+  widget->setScaledContents(false);
   ui->scrollArea->setWidget(widget);
-  widget->setPixmap(pixmap);
-  widget->setMaximumSize(ui->scrollArea->viewport()->size());
+  int a = ui->scrollArea->viewport()->width()  * 100 / pixmap.width();
+  if (a > 100)
+    a = 100;
 
+  int w = data->pixmap.width() * a / 100;
+  widget->setPixmap(data->pixmap.scaledToWidth(w));
+  ui->horizontalSliderZoom->setRange(a / 2, 150);
+  ui->horizontalSliderZoom->setValue(a);
 }
 
 void Viewer::clearViewer() {
