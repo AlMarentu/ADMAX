@@ -38,9 +38,9 @@ public:
   DocId parentId = 0;
   DocId supersedeId = 0;
   std::string creationInfo;
-  mobs::MTime creationTime;
-  UserId insertionUser{};
-  mobs::MTime insertionTime;
+  mobs::MTime creation;
+  UserId creator{};
+  mobs::MTime insertTime;
 
 
 };
@@ -57,9 +57,16 @@ public:
 
 class TagInfo {
 public:
-  TagInfo(int id = 0, std::string content = "") : tagId(id), tagContent(std::move(content)) {}
+  TagInfo(TagId id = 0, std::string content = "") : tagId(id), tagContent(std::move(content)) {}
   TagId tagId;
   std::string tagContent;
+};
+
+class TagSearch {
+public:
+  TagSearch(TagId id = 0) : tagId(id) {}
+  TagId tagId;
+  std::multimap<std::string, std::string> tagOpList{};
 };
 
 class SearchResult {
@@ -106,10 +113,11 @@ public:
 
   void insertTag(std::list<TagInfo> &tagList, const std::string &tagName, const std::string &content);
   TagId findTag(const std::string &tagName);
+  std::string tagName(TagId id);
 
 //  void tagSearch(const std::list<TagSearchInfo> &searchList, std::list<SearchResult> &result);
   /// alle Bedingungen oder-verknüpfen
-  void tagSearch(const std::list<TagInfo> &searchList, std::list<SearchResult> &result);
+  void tagSearch(const std::map<TagId, TagSearch> &searchList, std::list<SearchResult> &result);
 
 private:
   explicit Filestore(const std::string &basedir);

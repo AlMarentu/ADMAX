@@ -24,6 +24,7 @@
 #include <fstream>
 #include "mobs/querygenerator.h"
 #include <sys/stat.h>
+#include <set>
 #include "mobs/dbifc.h"
 #include "mobs/logging.h"
 
@@ -37,9 +38,10 @@ public:
   MemVar(uint64_t, supersedeId);
   MemVar(uint64_t, parentId);
   MemVar(std::string, creationInfo);
-  MemVar(mobs::MTime, creationTime);
-  MemVar(mobs::MTime, insertionTime);
-  MemVar(int, insertionUser);
+  MemVar(mobs::MTime, creation);
+  MemVar(int, creator);
+  MemVar(mobs::MTime, insertTime);
+  MemVar(mobs::MTime, storageTime, USENULL);
 };
 
 /** \brief Datenbankobjekt für Counter
@@ -69,11 +71,18 @@ public:
 class DMGR_TagInfo : virtual public mobs::ObjectBase {
 public:
   ObjInit(DMGR_TagInfo);
-  MemVar(uint64_t, id, KEYELEMENT1);
-  MemVar(int64_t, version, VERSIONFIELD);
+  MemVar(int64_t, id, KEYELEMENT1);
+  //MemVar(int64_t, version, VERSIONFIELD);
   MemVar(uint64_t, docId);
   MemVar(int, tagId);
   MemVar(std::string, content);
+  MemVar(bool, active);
+  MemVar(mobs::MTime, insertTime);
+  MemVar(mobs::MTime, creation);
+  MemVar(int, creator);
+  MemVar(mobs::MTime, deactivation);
+  MemVar(int, deactivator);
+
 };
 
 
@@ -119,17 +128,17 @@ void Filestore::newDocument(DocInfo &doc, std::list<TagInfo> tags) {
 
   doc.id = cntr.counter();
   doc.supersedeId = 0;
-  doc.insertionTime = std::chrono::system_clock::now();
-  if (doc.creationTime == mobs::MTime{})
-    doc.creationTime = doc.insertionTime;
+  doc.insertTime = std::chrono::system_clock::now();
+  if (doc.creation == mobs::MTime{})
+    doc.creation = doc.insertTime;
 
   DMGR_Document dbd;
   dbd.id(doc.id);
   dbd.docType(doc.docType);
   dbd.parentId(doc.parentId);
-  dbd.creationTime(doc.creationTime);
-  dbd.insertionTime(doc.insertionTime);
-  dbd.insertionUser(doc.insertionUser);
+  dbd.creation(doc.creation);
+  dbd.insertTime(doc.insertTime);
+  dbd.creator(doc.creator);
   dbd.creationInfo(doc.creationInfo);
 
   dbi.save(dbd);
@@ -143,9 +152,13 @@ void Filestore::newDocument(DocInfo &doc, std::list<TagInfo> tags) {
     dbi.save(cntr);
     DMGR_TagInfo ti;
     ti.id(cntr.counter());
+    ti.active(true);
     ti.tagId(t.tagId);
     ti.docId(doc.id);
     ti.content(t.tagContent);
+    ti.creation(doc.creation);
+    ti.creator(doc.creator);
+    ti.insertTime(doc.insertTime);
     dbi.save(ti);
   }
 }
@@ -236,8 +249,25 @@ TagId Filestore::findTag(const std::string &tagName) {
   return 0;
 }
 
+std::string Filestore::tagName(TagId id) {
+  LOG(LM_INFO, "tagName " << id);
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  DMGR_TagPool tpool;
+  tpool.id(id);
+  auto cursor = dbi.qbe(tpool);
+  if (cursor->eof()) {
+    return 0;
+  }
+  else {
+    // Tag bereits bekannt
+    dbi.retrieve(tpool, cursor);
+    return tpool.name();
+  }
+  return "";
+}
 
-void Filestore::tagSearch(const std::list<TagInfo> &searchList, std::list<SearchResult> &result) {
+
+void Filestore::tagSearch(const std::map<TagId, TagSearch> &searchList, std::list<SearchResult> &result) {
   LOG(LM_INFO, "search ");
   result.clear();
 
@@ -245,18 +275,68 @@ void Filestore::tagSearch(const std::list<TagInfo> &searchList, std::list<Search
   DMGR_TagInfo ti;
 
   using Q = mobs::QueryGenerator;    // Erleichtert die Tipp-Arbeit
-  Q query;
-  query << Q::OrBegin;
+  std::set<uint64_t> docIds;
+  bool start = true;
 
+  // Hier den besten aus der Filter-Liste aussuchen, keine OR-Verknüpfung
   for (auto &i:searchList) {
-    if (not ti.content().empty())
-      query << Q::AndBegin << ti.tagId.Qi("=", i.tagId) << ti.content.Qi("=", i.tagContent) << Q::AndEnd;
-    else
-      query << ti.tagId.Qi("=", i.tagId);
+    LOG(LM_INFO, "SEARCH: " << i.first);
+    std::set<uint64_t> docIdsTmp;
+    docIdsTmp.swap(docIds);
+    Q query;
+    query << Q::AndBegin << ti.active.Qi("=", true) << ti.tagId.Qi("=", i.first);
+    if (not i.second.tagOpList.empty()) {
+      query <<  Q::OrBegin;
+      // Ranges erkennen  >a <b
+      std::string lastOp; // nur > oder >=
+      const std::string *lastCont = nullptr;
+      for (auto &s:i.second.tagOpList) {
+        if (s.second == ">" or s.second == ">=") {
+          if (lastOp.empty()) {
+            lastCont = &s.first;
+            lastOp = s.second;
+            continue;
+          } else if (s.second == ">=" and *lastCont == s.first) {
+            lastOp = s.second;
+            continue;
+          } // else ignore, makes no sense
+        }
+        else if (not lastOp.empty() and (s.second == "<" or s.second == "<=")) {
+          query << Q::AndBegin << ti.content.Qi(lastOp.c_str(), *lastCont) << ti.content.Qi(s.second.c_str(), s.first) << Q::AndEnd;
+          lastOp = "";
+          continue;
+        }
+        query << ti.content.Qi(s.second.c_str(), s.first);
+      }
+      if (not lastOp.empty()) {
+        query << ti.content.Qi(lastOp.c_str(), *lastCont);
+      }
+      query <<  Q::OrEnd;
+    }
+    query <<  Q::AndEnd;
+
+    auto cursor = dbi.query(ti, query);
+    while (not cursor->eof()) {
+      dbi.retrieve(ti, cursor);
+      LOG(LM_INFO, "Z " << ti.to_string());
+      // Schnittmenge aller sets bilden
+      if (start or docIdsTmp.find(ti.docId()) != docIdsTmp.end())
+        docIds.emplace(ti.docId());
+      cursor->next();
+    }
+    start = false;
   }
 
-  query << Q::OrEnd;
-  auto cursor = dbi.query(ti, query);
+
+  if (docIds.empty())
+    return;
+
+  std::list<uint64_t> l(docIds.begin(), docIds.end());
+
+  Q query2;
+  query2 << Q::AndBegin << ti.active.Qi("=", true) << ti.docId.QiIn(l)<< Q::AndEnd;
+
+  auto cursor = dbi.query(ti, query2);
   while (not cursor->eof()) {
     dbi.retrieve(ti, cursor);
     SearchResult r;
@@ -266,6 +346,7 @@ void Filestore::tagSearch(const std::list<TagInfo> &searchList, std::list<Search
     result.emplace_back(r);
     cursor->next();
   }
+
 }
 
 

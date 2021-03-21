@@ -562,19 +562,35 @@ public:
 
     auto store = Filestore::instance();
     list<TagInfo> tagInfos;
+    map<TagId, TagSearch> tagSearch;
 
-    map<int, string> tagNames;
+    map<TagId, string> tagNames;
     for (auto i:tags) {
       TagId id = store->findTag(i.name());
       if (id) {
         tagInfos.emplace_back(id, i.content());
         tagNames[id] = i.name();
+        tagSearch[id].tagId = id;
+        auto c = i.content();
+        std::string o = "=";
+        if (c.empty())
+          o = "";
+        else if (c[0] == '*' or c[0] == '<' or c[0] == '>' or c[0] == '=') {
+          o = std::string() + c[0];
+          c.erase(0, 1);
+          if (not c.empty() and (o[0] == '<' and (c[0] == '>' or c[0] == '=') or
+                                 o[0] == '>' and c[0] == '=')) {
+            o += c[0];
+            c.erase(0, 1);
+          }
+        }
+        tagSearch[id].tagOpList.emplace(c, o);
       }
       else
         LOG(LM_ERROR, "Tag " << i.name() << " does not exist");
     }
     list<SearchResult> result;
-    store->tagSearch(tagInfos, result);
+    store->tagSearch(tagSearch, result);
 
     SearchDocumentResult sr;
     set<int> skip;
@@ -587,6 +603,9 @@ public:
       for (auto it2 = it; it2 != result.cend(); it2++) {
         if (it2->docId == it->docId) {
           auto &inf = r.tags[mobs::MemBaseVector::nextpos];
+          auto tn = tagNames.find(it2->tagId);
+          if (tn == tagNames.end())
+            tn = tagNames.emplace(it2->tagId, store->tagName(it2->tagId)).first;
           inf.name(tagNames[it2->tagId]);
           inf.content(it2->tagContent);
         }
@@ -635,7 +654,7 @@ public:
       case DocumentUnknown: docInfo.docType = DocUnk; break;
     }
     docInfo.creationInfo = "ATTACHED";
-//    docInfo.creationTime();
+//    docInfo.creation();
     std::list<TagInfo> tagInfo;
     store->insertTag(tagInfo, "name", name());
     for (auto &t:tags)
