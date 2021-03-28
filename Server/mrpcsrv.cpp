@@ -255,8 +255,10 @@ public:
       return;
     xmlResult.stopEncrypt();
     encryptedOutput = false;
-    if (needDelimiter)
+    if (needDelimiter) {
+      LOG(LM_INFO, "WRITE DELIMITER");
       xmlResult.putc(0);
+    }
     if (sync)
       xmlResult.sync();
 //    streambufO.getOstream() << '\0';
@@ -297,37 +299,23 @@ public:
 
 
 //Objektdefinitionen
-class Fahrzeug : virtual public mobs::ObjectBase
+class Ping : virtual public mobs::ObjectBase, virtual public MrpcObject
 {
 public:
-  ObjInit(Fahrzeug);
-
-
-  MemVar(string, typ);
-  MemVar(int, achsen, USENULL);
-  MemVar(bool, antrieb);
-
-  void init() override { TRACE(""); };
-};
-
-
-class Gespann : virtual public mobs::ObjectBase, virtual public MrpcObject
-{
-public:
-  ObjInit(Gespann);
+  ObjInit(Ping);
 
 
   MemVar(int, id, KEYELEMENT1);
-  MemVar(string, typ);
-  MemObj(Fahrzeug, zugmaschiene);
-  MemVector(Fahrzeug, haenger);
+  MemVar(int, cnt);
 
   void execute(mobs::XmlOut &xmlOut, XmlInput &xi) override {
     LOG(LM_INFO, "Send duplicate");
+    cnt(cnt()+1);
     this->traverse(xmlOut);
   }
 };
-ObjRegister(Gespann);
+ObjRegister(Ping);
+
 
 
 MOBS_ENUM_DEF(DocumenType, DocumentUnknown, DocumentPdf, DocumentJpeg, DocumentTiff, DocumentHtml, DocumentText);
@@ -347,10 +335,23 @@ class Document : virtual public mobs::ObjectBase
 public:
   ObjInit(Document);
 
+  MemVar(uint64_t, docId);
   MemMobsEnumVar(DocumenType, type);
   MemVar(string, name);
   MemVar(vector<u_char>, content);
 
+};
+
+
+class DocumentRaw : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(DocumentRaw);
+
+  MemVar(uint64_t, docId);
+  MemMobsEnumVar(DocumenType, type);
+  MemVar(string, name);
+  MemVar(int64_t, size);
 };
 
 class CCBuf : public std::basic_streambuf<char> {
@@ -373,50 +374,6 @@ public:
   }
 };
 
-/// Anforderung Document inline
-class GetDocument_7 : virtual public mobs::ObjectBase, virtual public MrpcObject
-{
-public:
-  ObjInit(GetDocument_7);
-
-  MemMobsEnumVar(DocumenType, type);
-  MemVar(string, name);
-
-  void execute(mobs::XmlOut &xmlOut, XmlInput &xi) override {
-    TRACE("");
-    Document doc;
-    struct stat stat_buf;
-    if (stat(name().c_str(), &stat_buf))
-      THROW("file not found");
-    fstream file(name());
-    if (not file.is_open())
-      THROW("file not found");
-
-    vector<u_char> buf;
-    buf.resize(stat_buf.st_size);
-    CCBuf ccBuf(buf);
-    ostream buffer(&ccBuf);
-    buffer << file.rdbuf();
-    file.close();
-
-    doc.name(name());
-    doc.content(move(buf));
-
-    doc.traverse(xmlOut);
-  };
-
-};
-ObjRegister(GetDocument_7);
-
-class DocumentRaw : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(DocumentRaw);
-
-  MemMobsEnumVar(DocumenType, type);
-  MemVar(string, name);
-  MemVar(int64_t, size);
-};
 
 /// Anforderung Document attached
 class GetDocument : virtual public mobs::ObjectBase, virtual public MrpcObject
@@ -470,10 +427,12 @@ public:
 
 //    sz = 81;
 //    doc.name(name());
+      doc.docId(docId());
       doc.size(sz);
       doc.type(docType);
 
       doc.traverse(xmlOut);
+      LOG(LM_INFO, "endEncryption;");
       xi.endEncryption();
 
       LOG(LM_INFO, "Start attachment type=" << doc.type.toStr(mobs::ConvToStrHint(false)));
@@ -506,7 +465,13 @@ public:
       std::streamsize b = xi.streambufO.getOstream().tellp();
       if (b - a != AES_BYTES(sz))
         LOG(LM_ERROR, "Error in size: written " << b - a << " <> calculated " << AES_BYTES(sz));
-      LOG(LM_INFO, "WRITTEN " << a << " + " << b - a);
+      LOG(LM_INFO, "WRITTEN: " << a << " + " << b - a);
+
+//      auto *tp = dynamic_cast<mobs::TcpStBuf *>(xi.streambufO.getOstream().rdbuf());
+//      LOG(LM_INFO, "CHECK STATE " << tp);
+//      if (tp and tp->bad())  // TODO iostream-exception
+//        throw runtime_error("stream lost");
+      LOG(LM_INFO, "CHECK STATE XX");
 
       xi.streambufO.getOstream().flush();
 //    xi.streambufO.getOstream().setf(ios::skipws);
@@ -522,6 +487,7 @@ public:
       file.close();
 
 //      doc.name(name());
+      doc.docId(docId());
       doc.type(docType);
       doc.content(std::move(buf));
       doc.traverse(xmlOut);
@@ -530,6 +496,31 @@ public:
 
 };
 ObjRegister(GetDocument);
+
+class Dump : virtual public mobs::ObjectBase, virtual public MrpcObject
+{
+public:
+  ObjInit(Dump);
+
+
+  MemVar(int, id, KEYELEMENT1);
+
+  void execute(mobs::XmlOut &xmlOut, XmlInput &xi) override {
+    LOG(LM_INFO, "Dump DB");
+    for (uint64_t i = 1; i < 6; i++) {
+      GetDocument gd;
+      gd.docId(i);
+      gd.allowAttach(true);
+
+      xi.needEncryption();
+      gd.execute(xmlOut, xi);
+
+    }
+
+    //this->traverse(xmlOut);
+  }
+};
+ObjRegister(Dump);
 
 
 
@@ -704,7 +695,7 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
     try {
       TLOG(LM_INFO, "WAITING");
       mobs::tcpstream xstream(server->tcpAccept);
-      xstream.setDelimiter(0);
+      xstream.exceptions(std::iostream::failbit | std::iostream::badbit);
       LOG(LM_INFO, "Remote: " << xstream.getRemoteHost() << " " << xstream.getRemoteIp());
 
       if (not xstream.is_open())
@@ -713,9 +704,8 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
       TLOG(LM_INFO, "OK");
 
       mobs::CryptIstrBuf streambufI(xstream);
-//    streambufI.getCbb()->setBase64(true);
+      streambufI.getCbb()->setReadDelimiter('\0');
       std::wistream x2in(&streambufI);
-//  x2in >> mobs::CryptBufBase::base64(true);
 
       // Output Stream initialisiert
       mobs::CryptOstrBuf streambufO(xstream);
@@ -726,45 +716,48 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
       xf.writeTagBegin(L"methodResponse");
 
 
-
       cout << "TTT " << std::boolalpha << x2out.fail() << " " << x2out.tellp() << endl;
 
 //    x2out << mobs::CryptBufBase::base64(true);
 
 
       // XML-Parser erledigt die eigentliche Arbeit in seinen Callback-Funktionen
-      XmlInput xr(x2in, xf,  streambufI, streambufO, id, server);
+      XmlInput xr(x2in, xf, streambufI, streambufO, id, server);
       xr.readTillEof(false);
-
 
 
       do {
         // Input parsen
         xr.parse();
-        TLOG(LM_INFO, "XIN bad=" << xstream.bad() << " eof=" << xstream.eof() << " read=" << xstream.tellg() << " eot=" << xr.eot());
+        TLOG(LM_INFO, "XIN bad=" << xstream.bad() << " eof=" << xstream.eof() << " read=" << xstream.tellg() << " eot="
+                                 << xr.eot());
         if (xr.attachmentObj) {
           LOG(LM_INFO, "ATTACHMENT");
-          xstream.setDelimiter();
           vector<u_char> iv;
           iv.resize(mobs::CryptBufAes::iv_size());
           mobs::CryptBufAes::getRand(iv);
           mobs::CryptBufAes cry(xr.ctx->key, iv, "", true);
-          xstream.unsetf(std::ios::skipws);
+//          xstream.unsetf(std::ios::skipws);
           auto delim = xstream.get();
-          while (delim != 0) {
-            LOG(LM_ERROR, "Delimiter is " << int(delim) << " " << (char)delim);
-            delim = xstream.get();
+          if (delim != 0) {
+            LOG(LM_ERROR, "Delimiter is " << int(delim) << " " << (char) delim);
+            throw runtime_error("delimiter missing");
+
+//            delim = xstream.get();
           }
           cry.setIstr(xstream);
           mobs::ConvObjToString cth;
           mobs::XmlOut xo(&xf, cth);
-          xr.attachmentObj->executeAttachment(cry,xo, xr);
-          xstream.setf(std::ios::skipws);
+          xr.attachmentObj->executeAttachment(cry, xo, xr);
+//          xstream.setf(std::ios::skipws);
           delete xr.attachmentObj;
           xr.attachmentObj = nullptr;
-          xstream.setDelimiter();
           LOG(LM_INFO, "endEncryption; finish=" << xr.finish);
           xr.endEncryption();
+          auto *tp = dynamic_cast<mobs::TcpStBuf *>(xstream.rdbuf());
+          LOG(LM_INFO, "CHECK STATE " << tp);
+          if (tp and tp->bad())  // TODO iostream-exception
+            throw runtime_error("stream lost");
         }
       } while (not xr.finish and not xr.eot());
       TLOG(LM_INFO, "parsing done");
@@ -776,6 +769,8 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
       xstream.shutdown();
       TLOG(LM_INFO, "closing good=" << xstream.good());
       xstream.close();
+    } catch (mobs::tcpstream::failure &e) {
+      TLOG(LM_ERROR, "Worker File-Exception " << e.what());
     } catch (exception &e) {
       TLOG(LM_ERROR, "Worker Exception " << e.what());
     }
@@ -804,171 +799,13 @@ void MRpcServer::server() {
 int main(int argc, char* argv[]) {
 //  logging::Trace::traceOn = true;
   TRACE("");
-  {
 
-#if 0
-    std::wostream stream(&streambuf);
-    auto lo = std::locale(stream.getloc(), new std::codecvt_utf16<wchar_t, 0x10ffff, std::little_endian>);
-//    auto lo = std::locale(stream.getloc(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::little_endian>);
-
-    stream.imbue(lo);
-
-    stream << L"hello";
-//  streambuf.print_buffer();
-    if (stream.good()) {
-      std::cout << L"stream is good\n";
-    }
-
-    stream << L"wörld";
-//  streambuf.print_buffer();
-    if (stream.good()) {
-      std::cout << "stream is good\n";
-    }
-
-    stream << "!fgdgfdgd";
-//  streambuf.print_buffer();
-    if (!stream.good()) {
-      std::cout << "stream is not good\n";
-    }
-    stream << flush;
-
-  exit(0);
-#endif
-  }
   try {
     Filestore::instance("DocSrvFiles");
     MRpcServer srv;
 //    srv.genKey();
     srv.server();
 
-#if 0
-    Gespann f1, f2;
-
-    f1.id(1);
-    f1.typ("Brauereigespann");
-    f1.zugmaschiene.typ("Sechsspänner");
-    f1.zugmaschiene.achsen(0);
-    f1.zugmaschiene.antrieb(true);
-    f1.haenger[0].typ("Bräuwagen");
-    f1.haenger[0].achsen(2);
-
-    f2.id(2);
-    f2.typ("Schlepper mit 2 Anhängern");
-    f2.zugmaschiene.typ("Traktor");
-    f2.zugmaschiene.achsen(2);
-    f2.zugmaschiene.antrieb(true);
-    f2.haenger[0].typ("Anhänger");
-    f2.haenger[0].achsen(2);
-    f2.haenger[1].typ("Anhänger");
-    f2.haenger[1].achsen(2);
-
-
-// Ausgabe XML
-
-    mobs::ConvObjToString cth;
-//    wofstream xout("gespann.xml", ios::trunc);
-//    ofstream xout("gespann.xml", ios::trunc);
-    mobs::tcpstream xout("localhost", 5555);
-    if (not xout.is_open())
-      throw runtime_error("File not open");
-
-    stringstream ss;
-//    MyStrBuf<10, wchar_t> streambuf(xout);
-
-//    mobs::CryptOstrBuf streambuf(xout, new mobs::CryptBufAes( "12345"));
-    mobs::CryptOstrBuf streambuf(xout);
-    std::wostream x2out(&streambuf);
-    cout << "TTT " << std::boolalpha << x2out.fail() << " " << x2out.tellp() << endl;
-
-//    x2out << mobs::CryptBufBase::base64(true);
-
-    // Writer-Klasse mit File, und Optionen initialisieren
-    mobs::XmlWriter xf(x2out, mobs::XmlWriter::CS_utf8, true);
-    xf.setPrefix(L"m:"); // optionaler XML Namespace
-    mobs::XmlOut xo(&xf, cth);
-    // XML-Header
-    xf.writeHead();
-    cout << "TT3T " << std::boolalpha << x2out.fail() << " " << x2out.tellp() << endl;
-    // Listen-Tag
-    xf.writeTagBegin(L"list");
-
-    // Objekt schreiben
-    f1.traverse(xo);
-    // optionaler Kommentar
-    xf.writeComment(L"und noch einer");
-
-    // Objekt schreiben
-    f2.traverse(xo);
-
-    string json = R"({
-      id:3,
-      typ:"PKW",
-      zugmaschiene:{
-        typ:"PKW",
-        achsen:2,
-        antrieb:true}
-      })";
-    f2.clear();
-    mobs::string2Obj(json, f2);
-
-    // Objekt schreiben
-    f2.traverse(xo);
-
-    // Listen-Tag schließen
-    xf.writeTagEnd();
-    // file schließen
-//    x2out << mobs::CryptBufBase::base64(false);
-
-//    x2out << mobs::CryptBufBase::final();
-    streambuf.finalize();
-    LOG(LM_INFO, "CLOSE");
-    xout.close();
-    LOG(LM_INFO, "XOUT bad=" << xout.bad() << " written=" << xout.tellp());
-    cout << ss.str() << " " << ss.str().length() << endl;
-
-    // openssl aes-256-cbc  -d -in cmake-build-debug/gespann.xml   -md sha1 -k 12345
-    // openssl aes-256-cbc  -d -in cmake-build-debug/gespann.xml -a -A  -md sha1 -k 12345I
-    // openssl aes-256-cbc  -d -in c8  -nosalt  -md sha1 -k 12345
-
-//    return 0;
-#endif
-
-#if 0
-    // File öffnen
-//    wifstream xin("gespann.xml");
-//    ifstream xin("gespann.xml");
-    mobs::tcpstream xin("localhost", 5555);
-
-    if (not xin.is_open())
-      throw runtime_error("in-File not open");
-
-//  MyIStrBuf<10, wchar_t> streambufI(xin);
-  mobs::CryptIstrBuf streambufI(xin);
-//  mobs::CryptIstrBuf streambufI(xin, new mobs::CryptBufAes("12345"));
-//    streambufI.getCbb()->setBase64(true);
-    std::wistream x2in(&streambufI);
-//  x2in >> mobs::CryptBufBase::base64(true);
-
-
-  // Import-Klasee mit FIle initialisieren
-    XmlInput xr(x2in);
-    xr.setPrefix("m:"); // optionaler XML Namespace
-
-    while (not xr.eof()) {
-      LOG(LM_INFO, "XIN bad=" << xin.bad() << " eof=" << xin.eof() << " read=" << xin.tellg());
-      xin.tellg();
-      // File parsen
-      xr.parse();
-      LOG(LM_INFO, "Zwischenpause");
-    }
-
-    // fertig
-    LOG(LM_INFO, "XIN bad=" << xin.bad() << " eof=" << xin.eof() << " read=" << xin.tellg());
-    xin.close();
-    LOG(LM_INFO, "XIN bad=" << xin.bad() << " read=" << xin.tellg());
-
-
-#endif
 
   }
   catch (std::ios_base::failure &e) {

@@ -11,8 +11,8 @@ endif()
 add_executable(mrpcsrv mrpcsrv.cpp mrpc.h filestore.cpp filestore.h)
 target_link_libraries(mrpcsrv ${MOBS_LIBRARIES})
 
-#add_executable(mrpcclient mrpcclient.cpp mrpc.h)
-#target_link_libraries(mrpcclient mobs)
+add_executable(mrpcclient mrpcclient.cpp mrpc.h)
+target_link_libraries(mrpcclient ${MOBS_LIBRARIES})
 
 
 

@@ -49,44 +49,8 @@ public:
   void addBuff(QByteArray &&move) {
     if (move.isEmpty())
       return;
-//    LOG(LM_DEBUG, "BLOCK READ " << std::string(move.data(), move.size()) << " " << split);
-    if (split and false) {
-      auto i = move.indexOf('\0');
-      if (i >= 0) { // Block bei =-Char aufsplitten
-        eob = true;
-        LOG(LM_INFO, "SPLIT at " << i);
-        split = false;
-        if (i == move.size() -1)
-          move.resize(i);
-        else {
-          auto last = move.right(move.size() - i - 1);
-          move.resize(i);
-          if (i > 0) {
-            buffers.emplace_back(qMove(move));
-//            LOG(LM_DEBUG, "BLOCK READ " << std::string(move.data(), move.size()));
-          }
-          buffers.emplace_back(qMove(last));
-//          std::stringstream ss;
-//          for (auto b:buffers.back()) {
-//            ss << " " << std::hex << std::setw(2) << std::setfill('0') << int (u_char (b));
-//          }
-//
-//          LOG(LM_INFO, "BLOCK READ " << ss.str() << " #");
-          return;
-        }
-      }
-    }
-    std::string s = std::string(move.data(), move.size());
-//    LOG(LM_DEBUG, "BLOCK READ " << s);
+//    LOG(LM_DEBUG, "BLOCK READ " << std::string(move.data(), move.size()));
     buffers.emplace_back(qMove(move));
-//    if (not split) {
-//      std::stringstream ss;
-//      for (auto b:buffers.back()) {
-//        ss << " " << std::hex << std::setw(2) << std::setfill('0') << int (u_char (b));
-//      }
-//      LOG(LM_INFO, "BLOCK READ " << ss.str() << " #");
-//    }
-//    else
   }
 
   int_type underflow() override;
@@ -129,7 +93,6 @@ public:
 
   void startNewBlock() {
     LOG(LM_INFO, "startNewBlock");
-    split = true;
     eob = false;
   }
 
@@ -142,7 +105,6 @@ public:
   std::list<QByteArray> buffers;
   bool initialized = false;
   bool eob = false;   // '\0' found
-  bool split = true;
 };
 
 BlockIstBuf::int_type BlockIstBuf::underflow() {
@@ -154,24 +116,24 @@ BlockIstBuf::int_type BlockIstBuf::underflow() {
   if (buffers.empty())
     return Traits::eof();
 
-  if (split) {
-    auto idx = buffers.front().indexOf('\0');
-    if (idx >= 0) {
-      auto last = buffers.front().right(buffers.front().size() - idx - 1);
-      LOG(LM_DEBUG, "rest " << last.size());
-      if (last.size() > 0)
-        buffers.insert(std::next(buffers.begin()), last);
-      buffers.front().resize(idx);
-      split = false;
-      if (idx == 0) {
-        buffers.erase(buffers.begin());
-        return underflow();
-      }
-      LOG(LM_DEBUG, "READ S " << std::string(buffers.front().data(), buffers.front().size()));
-    }
-    else
-      LOG(LM_DEBUG, "READ N " << std::string(buffers.front().data(), buffers.front().size()));
-  }
+//  if (split) {
+//    auto idx = buffers.front().indexOf('\0');
+//    if (idx >= 0) {
+//      auto last = buffers.front().right(buffers.front().size() - idx - 1);
+//      LOG(LM_DEBUG, "rest " << last.size());
+//      if (last.size() > 0)
+//        buffers.insert(std::next(buffers.begin()), last);
+//      buffers.front().resize(idx);
+//      split = false;
+//      if (idx == 0) {
+//        buffers.erase(buffers.begin());
+//        return underflow();
+//      }
+//      LOG(LM_DEBUG, "READ S " << std::string(buffers.front().data(), buffers.front().size()));
+//    }
+//    else
+//      LOG(LM_DEBUG, "READ N " << std::string(buffers.front().data(), buffers.front().size()));
+//  }
   Base::setg(buffers.front().data(), buffers.front().data(), buffers.front().data() + buffers.front().size());
   LOG(LM_DEBUG, "new Buffer " << Base::egptr() - Base::gptr());
   return Traits::to_int_type(*Base::gptr());
@@ -252,7 +214,7 @@ public:
   bool encryptedInput = false;
   bool ready = false;
   bool skipDelim = false;
-  bool newBlock = false;
+//  bool newBlock = false;
 
   std::string errorMsg;
 
@@ -269,7 +231,9 @@ public:
   MrpcClientData() : streambufO(ostr), x2out(&streambufO), xf(x2out, mobs::XmlWriter::CS_utf8, true),
   iBstr(&iBlkStr), streambufI(iBstr), x2in(&streambufI), xr(x2in) {
     xr.readTillEof(false);
-    iBstr.unsetf(std::ios::skipws);
+    streambufI.getCbb()->setReadDelimiter('\0');
+    iBlkStr.startNewBlock();
+//    iBstr.setf(std::ios::skipws);
 
 
 //    std::locale loc(std::locale::classic(), new codec_binary);
@@ -365,7 +329,7 @@ void MrpcClient::flush() {
     }
     if (sz != o.length()) {
       LOG(LM_ERROR, "PART " << sz << " of " << o.length());
-      data->xr.errorMsg = "write incpomplete";
+      data->xr.errorMsg = "write incomplete";
       socket->abort();
     }
   }
@@ -377,7 +341,7 @@ void MrpcClient::sendLogin() {
   data->state = MrpcClientData::Authenticating;
   SessionLoginData sess;
   sess.login("client");
-  sess.software("mrpcclient");
+  sess.software("ADMAXclient");
 
   std::string buffer = sess.to_string(mobs::ConvObjToString().exportJson().noIndent());
   std::vector<u_char> inhalt;
@@ -516,20 +480,13 @@ void MrpcClient::readyRead() {
       LOG(LM_INFO, "Attachment wait avail " << avail);
       int p = data->percentStart +
               (data->percentEnd - data->percentStart) * data->attachment.size() / data->attachmentSize;
-      if (avail > 0 and data->attachment.empty())
-        avail--;  // '\0' char
+//      if (avail > 0 and data->attachment.empty())
+//        avail--;  // '\0' char
       if (progress and p < 100)
         progress->setValue(p);
       while (data->state == MrpcClientData::SessionClosed or
               (avail = data->iBlkStr.avail()) >= 2048 or avail >= data->crypt->getLimitRemain()) {
         char c;
-//        if (data->attachment.empty()) {
-//          c = data->iBstr.get();
-//          while (c != '\0') {
-//            LOG(LM_ERROR, "'\\0' expected " << int(c) << " " << c);
-//            c = data->iBstr.get();
-//          }
-//        }
         if (data->attachmentStream->get(c).eof()) {
           if (data->attachmentStream->bad()) {
             data->xr.errorMsg = "attachment read error";
@@ -568,10 +525,25 @@ void MrpcClient::readyRead() {
     if (not eob and data->xr.encryptedInput)  // wenn kein Blockende, dann sicherheitshalber nach jedem Token stoppen
       data->xr.stop();
     data->xr.parse();
-    if (data->xr.newBlock) {
+    if (data->xr.skipDelim) {
+      data->xr.skipDelim = false;
       data->iBlkStr.startNewBlock();
-      data->xr.newBlock = false;
+//      data->iBstr.setf(std::ios::skipws);
+      int c = data->iBstr.get();
+      LOG(LM_INFO, "C = " << std::hex << int(c));
+//      if (c != '\0')
+//        THROW("wrong delimiter");
+      while (c) {
+        c = data->iBstr.get();
+        if  (data->iBstr.eof())
+          THROW("wrong delimiter");
+        LOG(LM_INFO, "C = " << std::hex << int(c));
+      }
     }
+//    if (data->xr.newBlock) {
+//      data->iBlkStr.startNewBlock();
+//      data->xr.newBlock = false;
+//    }
     if (data->xr.eot()) {
       LOG(LM_INFO, "Parse Ende erreicht " << " " << data->xr.level());
       socket->disconnect();
@@ -680,7 +652,7 @@ mobs::ObjectBase *MrpcClient::sendAndWaitObj(const mobs::ObjectBase *obj, int pe
   LOG(LM_INFO, "SEND AND WAIT NEXT begin");
   data->setPercent(percent);
   send(obj);
-  data->iBlkStr.startNewBlock();
+//  data->iBlkStr.startNewBlock();
   for (;;) {
     int r = exec();
     if (r == 99) {
@@ -703,7 +675,7 @@ mobs::ObjectBase *MrpcClient::sendAndWaitObj(const mobs::ObjectBase *obj, int pe
 mobs::ObjectBase *MrpcClient::execNextObj(int percent) {
   LOG(LM_INFO, "WAIT NEXT begin");
   data->setPercent(percent);
-  data->iBlkStr.startNewBlock();
+//  data->iBlkStr.startNewBlock();
   for (;;) {
     exec();
     auto tmp = data->xr.objReturn;
@@ -731,7 +703,7 @@ void MrpcClient::waitDone() {
 
 
   data->setPercent(99);
-  data->iBlkStr.startNewBlock();
+//  data->iBlkStr.startNewBlock();
   while (data->state != MrpcClientData::Error and not data->xr.eot()) {
     exec();
   }

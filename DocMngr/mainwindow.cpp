@@ -79,6 +79,7 @@ class Document : virtual public mobs::ObjectBase
 public:
   ObjInit(Document);
 
+  MemVar(uint64_t, docId);
   MemMobsEnumVar(DocumenType, type);
   MemVar(std::string, name);
   MemVar(std::vector<u_char>, content);
@@ -129,6 +130,7 @@ class DocumentRaw : virtual public mobs::ObjectBase
 public:
   ObjInit(DocumentRaw);
 
+  MemVar(uint64_t, docId);
   MemMobsEnumVar(DocumenType, type);
   MemVar(std::string, name);
   MemVar(int64_t, size);
