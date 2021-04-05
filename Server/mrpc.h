@@ -21,6 +21,9 @@
 #define MOBS_MRPC_H
 
 #include "mobs/objgen.h"
+#include "mobs/mchrono.h"
+#include <vector>
+#include <string>
 
 class Session : virtual public mobs::ObjectBase
 {
@@ -35,6 +38,7 @@ ObjRegister(Session);
 
 MOBS_ENUM_DEF(SessionErrorIds, SErrUnknown, SErrNeedCredentioal);
 MOBS_ENUM_VAL(SessionErrorIds, "UNK",       "NEED_CREDENTIAL");
+
 class SessionError : virtual public mobs::ObjectBase
 {
 public:
@@ -44,7 +48,6 @@ public:
   MemVar(std::string, msg);
 
 };
-ObjRegister(SessionError);
 
 class CommandResult : virtual public mobs::ObjectBase
 {
@@ -52,10 +55,10 @@ public:
   ObjInit(CommandResult);
 
   MemVar(int64_t, msgId);
+  MemVar(uint64_t, docId);
   MemVar(std::string, msg);
 
 };
-ObjRegister(CommandResult);
 
 
 class SessionLogin : virtual public mobs::ObjectBase
@@ -65,7 +68,6 @@ public:
 
   MemVar(std::vector<u_char>, cipher);
 };
-ObjRegister(SessionLogin);
 
 class SessionLoginData : virtual public mobs::ObjectBase
 {
@@ -86,8 +88,68 @@ public:
   MemVar(u_int, id);
   MemVar(std::string, info);
 };
-ObjRegister(SessionResult);
 
+
+
+
+
+
+MOBS_ENUM_DEF(DocumenType, DocumentUnknown, DocumentPdf, DocumentJpeg, DocumentTiff, DocumentHtml, DocumentText);
+MOBS_ENUM_VAL(DocumenType, "unk",           "pdf",       "jpg",        "tif",        "htm",        "txt");
+
+class DocumentTags : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(DocumentTags);
+
+  MemVar(std::string, name);
+  MemVar(std::string, content);
+};
+
+
+class DocumentInfo : virtual public mobs::ObjectBase {
+public:
+  ObjInit(DocumentInfo);
+
+  MemVar(uint64_t, docId);
+  MemVector(DocumentTags, tags, USEVECNULL);
+  MemVar(std::string, creationInfo, USENULL); /// Art der Erzeugung/Ableitung/Ersetzung
+  MemVar(mobs::MTime, creationTime, USENULL); /// Zeitpunkt der Erzeugung, wenn ungleich Eintragezeitpunkt
+};
+
+class SearchDocumentResult : virtual public mobs::ObjectBase {
+public:
+  ObjInit(SearchDocumentResult);
+
+  MemVector(DocumentInfo, tags); // ohne creation-Infos
+
+};
+
+class Document : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(Document);
+
+  //MemVar(uint64_t, docId);
+  MemObj(DocumentInfo, info);
+  MemMobsEnumVar(DocumenType, type);
+  MemVar(std::string, name);
+  MemVar(std::vector<u_char>, content);
+
+};
+
+
+class DocumentRaw : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(DocumentRaw);
+
+//  MemVar(uint64_t, docId);
+  MemObj(DocumentInfo, info);
+  MemMobsEnumVar(DocumenType, type);
+  MemVar(std::string, name);
+  MemVar(int64_t, size);
+};
 
 
 

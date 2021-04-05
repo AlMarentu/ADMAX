@@ -38,6 +38,11 @@
 #include <utility>
 #include <sys/stat.h>
 
+ObjRegister(SessionError);
+ObjRegister(CommandResult);
+ObjRegister(SessionLogin);
+ObjRegister(SessionResult);
+
 using namespace std;
 
 #define AES_BYTES(fileSize) (mobs::CryptBufAes::iv_size() + (fileSize + 16) / 16 * 16)
@@ -174,77 +179,77 @@ public:
     stop();
   }
   void filled(mobs::ObjectBase *obj, const string &error) override {
-    LOG(LM_INFO, "filled " << obj->to_string() << (error.empty() ? " OK":" ERROR = ") << error);
+    LOG(LM_INFO, "filled " << obj->to_string() << (encryptedInput ? " OK":" UNENCRYPTED"));
+    if (not error.empty())
+      THROW("error in XML stream: " << error);
+
     mobs::ConvObjToString cth;
     mobs::XmlOut xo(&xmlResult, cth);
-    if (error.empty()) {
-      if (auto *sess = dynamic_cast<SessionLogin *>(obj)) {
-        LOG(LM_INFO, "LOGIN " << sess->cipher().size());
-        std::vector<u_char> inhalt;
-        mobs::decryptPrivateRsa(sess->cipher(), inhalt, STRSTR(server->keystorePath << '/' << server->name << "_priv.pem"), "12345");
-        string buf((char *)&inhalt[0], inhalt.size());
-        SessionLoginData data;
-        mobs::string2Obj(buf, data, mobs::ConvObjFromStr());
-        LOG(LM_DEBUG, "INFO = " << data.to_string());
 
-        u_int id;
-        if (not(ctx = server->newSession(id, data.login())))
-          THROW("no more sessions");
-        SessionResult result;
-        result.id(id);
+    if (auto *sess = dynamic_cast<SessionLogin *>(obj)) {
+      LOG(LM_INFO, "LOGIN " << sess->cipher().size());
+      std::vector<u_char> inhalt;
+      mobs::decryptPrivateRsa(sess->cipher(), inhalt, STRSTR(server->keystorePath << '/' << server->name << "_priv.pem"), "12345");
+      string buf((char *)&inhalt[0], inhalt.size());
+      SessionLoginData data;
+      mobs::string2Obj(buf, data, mobs::ConvObjFromStr());
+      LOG(LM_DEBUG, "INFO = " << data.to_string());
 
-        string keyFile = STRSTR(server->keystorePath << '/' << ctx->login << ".pem");
-        vector<u_char> cipher;
-        // Der Session-Key wird mit dem privaten Schlüssel des Clients codiert
-        mobs::encryptPublicRsa(ctx->key, cipher, keyFile);
-        result.key(cipher);
+      u_int id;
+      if (not(ctx = server->newSession(id, data.login())))
+        THROW("no more sessions");
+      SessionResult result;
+      result.id(id);
 
-        result.traverse(xo);
+      string keyFile = STRSTR(server->keystorePath << '/' << ctx->login << ".pem");
+      vector<u_char> cipher;
+      // Der Session-Key wird mit dem privaten Schlüssel des Clients codiert
+      mobs::encryptPublicRsa(ctx->key, cipher, keyFile);
+      result.key(cipher);
+
+      result.traverse(xo);
 //        if (needDelimiter)
 //          xmlResult.putc(0);
-        xmlResult.sync();
+      xmlResult.sync();
 
-      } else if (auto *sess = dynamic_cast<Session *>(obj)) {
-        LOG(LM_INFO, "SESSION = " << sess->id());
-        if (ctx and ctx->sessionId != sess->id())
-          THROW("session already assigned");
-        if (not ctx)
-          ctx = server->getSession(sess->id());
-        if (not ctx) {
-          LOG(LM_ERROR, "missing sessionId");
-          SessionError error1;
-          error1.error(SErrNeedCredentioal);
-          error1.traverse(xo);
-          if (needDelimiter)
-            xmlResult.putc(0);
-          xmlResult.sync();
-          // weiteres parsen abbrechen
-          stop();
-        }
-      } else if (not ctx) {
-        THROW("invalid sessionId");
-      }
-      else if (ctx->login.empty()) {
+    } else if (auto *sess = dynamic_cast<Session *>(obj)) {
+      LOG(LM_INFO, "SESSION = " << sess->id());
+      if (ctx and ctx->sessionId != sess->id())
+        THROW("session already assigned");
+      if (not ctx)
+        ctx = server->getSession(sess->id());
+      if (not ctx) {
+        LOG(LM_ERROR, "missing sessionId");
         SessionError error1;
         error1.error(SErrNeedCredentioal);
         error1.traverse(xo);
+        if (needDelimiter)
+          xmlResult.putc(0);
+        xmlResult.sync();
         // weiteres parsen abbrechen
         stop();
-      } else if (auto mrpc = dynamic_cast<MrpcObject *>(obj)) {
-        needEncryption();
+      }
+    } else if (not ctx) {
+      THROW("invalid sessionId");
+    }
+    else if (ctx->login.empty()) {
+      SessionError error1;
+      error1.error(SErrNeedCredentioal);
+      error1.traverse(xo);
+      // weiteres parsen abbrechen
+      stop();
+    } else if (auto mrpc = dynamic_cast<MrpcObject *>(obj)) {
+      needEncryption();
 
-        mrpc->execute(xo, *this);
+      mrpc->execute(xo, *this);
 
-        if (attachmentObj)
-          return;
-       }
-      else
-        THROW("no MRpc object");
+      if (attachmentObj)
+        return;
     }
     else
-      THROW(error);
+      THROW("no MRpc object");
 
-    LOG(LM_INFO, "endEncryption; finish=" << finish);
+  LOG(LM_INFO, "endEncryption; finish=" << finish);
     endEncryption();
 
     delete obj;
@@ -318,41 +323,6 @@ ObjRegister(Ping);
 
 
 
-MOBS_ENUM_DEF(DocumenType, DocumentUnknown, DocumentPdf, DocumentJpeg, DocumentTiff, DocumentHtml, DocumentText);
-MOBS_ENUM_VAL(DocumenType, "unk",           "pdf",       "jpg",        "tif",        "htm",        "txt");
-
-class DocumentTags : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(DocumentTags);
-
-  MemVar(string, name);
-  MemVar(string, content);
-};
-
-class Document : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(Document);
-
-  MemVar(uint64_t, docId);
-  MemMobsEnumVar(DocumenType, type);
-  MemVar(string, name);
-  MemVar(vector<u_char>, content);
-
-};
-
-
-class DocumentRaw : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(DocumentRaw);
-
-  MemVar(uint64_t, docId);
-  MemMobsEnumVar(DocumenType, type);
-  MemVar(string, name);
-  MemVar(int64_t, size);
-};
 
 class CCBuf : public std::basic_streambuf<char> {
 public:
@@ -384,15 +354,23 @@ public:
   MemVar(uint64_t, docId);
   MemVar(std::string, type);
   MemVar(bool, allowAttach);
+  MemVar(bool, allInfos);
 
   void execute(mobs::XmlOut &xmlOut, XmlInput &xi) override {
     TRACE("");
 
     auto store = Filestore::instance();
     auto sz = store->docSize(docId());
-    DocType dt = store->getType(docId());
+
+    list<SearchResult> result;
+    DocInfo docInfo;
+    if (allInfos())
+      store->tagInfo(docId(), result, docInfo);
+    else
+      docInfo.docType = store->getType(docId());
+
     DocumenType docType;
-    switch(dt) {
+    switch(docInfo.docType) {
       case DocUnk:
         docType = DocumentUnknown;
         break;
@@ -422,14 +400,29 @@ public:
     if (not file.is_open())
       THROW("file not found");
 
+
     if (sz > 8000 and allowAttach()) {
       DocumentRaw doc;
 
 //    sz = 81;
 //    doc.name(name());
-      doc.docId(docId());
+      doc.info.docId(docId());
+
+      map<TagId, string> tagNames;
+      for (auto i:result) {
+        auto &inf = doc.info.tags[mobs::MemBaseVector::nextpos];
+        auto tn = tagNames.find(i.tagId);
+        if (tn == tagNames.end())
+          tn = tagNames.emplace(i.tagId, store->tagName(i.tagId)).first;
+        inf.name(tagNames[i.tagId]);
+        inf.content(i.tagContent);
+      }
       doc.size(sz);
       doc.type(docType);
+      if (allInfos()) {
+        doc.info.creationTime(docInfo.creation);
+        doc.info.creationInfo(docInfo.creationInfo);
+      }
 
       doc.traverse(xmlOut);
       LOG(LM_INFO, "endEncryption;");
@@ -487,8 +480,21 @@ public:
       file.close();
 
 //      doc.name(name());
-      doc.docId(docId());
+      doc.info.docId(docId());
+      map<TagId, string> tagNames;
+      for (auto i:result) {
+        auto &inf = doc.info.tags[mobs::MemBaseVector::nextpos];
+        auto tn = tagNames.find(i.tagId);
+        if (tn == tagNames.end())
+          tn = tagNames.emplace(i.tagId, store->tagName(i.tagId)).first;
+        inf.name(tagNames[i.tagId]);
+        inf.content(i.tagContent);
+      }
       doc.type(docType);
+      if (allInfos()) {
+        doc.info.creationTime(docInfo.creation);
+        doc.info.creationInfo(docInfo.creationInfo);
+      }
       doc.content(std::move(buf));
       doc.traverse(xmlOut);
     }
@@ -507,10 +513,14 @@ public:
 
   void execute(mobs::XmlOut &xmlOut, XmlInput &xi) override {
     LOG(LM_INFO, "Dump DB");
-    for (uint64_t i = 1; i < 6; i++) {
+    auto store = Filestore::instance();
+    std::vector<DocId> result;
+    store->allDocs(result);
+    for (auto i:result) {
       GetDocument gd;
       gd.docId(i);
       gd.allowAttach(true);
+      gd.allInfos(true);
 
       xi.needEncryption();
       gd.execute(xmlOut, xi);
@@ -523,22 +533,6 @@ public:
 ObjRegister(Dump);
 
 
-
-class DocumentInfo : virtual public mobs::ObjectBase {
-public:
-  ObjInit(DocumentInfo);
-
-  MemVar(uint64_t, docId);
-  MemVector(DocumentTags, tags);
-};
-
-class SearchDocumentResult : virtual public mobs::ObjectBase {
-public:
-  ObjInit(SearchDocumentResult);
-
-  MemVector(DocumentInfo, tags);
-
-};
 
 class SearchDocument : virtual public mobs::ObjectBase, virtual public MrpcObject {
 public:
@@ -675,6 +669,7 @@ public:
 
     LOG(LM_INFO, "Attachment saved");
     CommandResult doc;
+    doc.docId(dId);
     if (crypt.bad())
       doc.msg("BAD");
     else
@@ -755,7 +750,7 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
           LOG(LM_INFO, "endEncryption; finish=" << xr.finish);
           xr.endEncryption();
           auto *tp = dynamic_cast<mobs::TcpStBuf *>(xstream.rdbuf());
-          LOG(LM_INFO, "CHECK STATE " << tp);
+          LOG(LM_INFO, "CHECK STATE " << tp->bad());
           if (tp and tp->bad())  // TODO iostream-exception
             throw runtime_error("stream lost");
         }

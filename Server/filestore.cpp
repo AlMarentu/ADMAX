@@ -350,6 +350,59 @@ void Filestore::tagSearch(const std::map<TagId, TagSearch> &searchList, std::lis
 }
 
 
+void Filestore::tagInfo(DocId id, std::list<SearchResult> &result, DocInfo &doc) {
+  LOG(LM_INFO, "info ");
+  result.clear();
+
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+
+  DMGR_Document dbd;
+  dbd.id(id);
+  if (not dbi.load(dbd))
+    THROW("document not found");
+
+  doc.docType = DocType(dbd.docType());
+  doc.parentId = dbd.parentId();
+  doc.creation = dbd.creation();
+  doc.insertTime = dbd.insertTime();
+  doc.creator = dbd.creator();
+  doc.creationInfo = dbd.creationInfo();
+
+  DMGR_TagInfo ti;
+
+  using Q = mobs::QueryGenerator;    // Erleichtert die Tipp-Arbeit
+  Q query2;
+  query2 << Q::AndBegin << ti.active.QiEq(true) << ti.docId.QiEq(id) << Q::AndEnd;
+
+  auto cursor = dbi.query(ti, query2);
+  while (not cursor->eof()) {
+    dbi.retrieve(ti, cursor);
+    SearchResult r;
+    r.tagId = ti.tagId();
+    r.tagContent = ti.content();
+    r.docId = ti.docId();
+    result.emplace_back(r);
+    cursor->next();
+  }
+
+}
+
+void Filestore::allDocs(std::vector<DocId> &result) {
+  LOG(LM_INFO, "all ");
+  result.clear();
+
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+
+  DMGR_Document dbd;
+  using Q = mobs::QueryGenerator;    // Erleichtert die Tipp-Arbeit
+  Q query;
+  for (auto cursor = dbi.query(dbd, query); not cursor->eof(); cursor->next()) {
+    dbi.retrieve(dbd, cursor);
+    result.emplace_back(dbd.id());
+  }
+}
+
+
 #if 0
 void Filestore::tagSearch(const std::list<TagSearchInfo> &searchList, std::list<SearchResult> &result) {
 

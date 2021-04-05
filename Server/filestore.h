@@ -21,6 +21,7 @@
 #define MOBS_FILESTORE_H
 
 #include <string>
+#include <vector>
 #include <iostream>
 #include <utility>
 #include "mobs/dbifc.h"
@@ -118,6 +119,10 @@ public:
 //  void tagSearch(const std::list<TagSearchInfo> &searchList, std::list<SearchResult> &result);
   /// alle Bedingungen oder-verknüpfen
   void tagSearch(const std::map<TagId, TagSearch> &searchList, std::list<SearchResult> &result);
+  /// tag info zu einem Dokument
+  void tagInfo(DocId id, std::list<SearchResult> &result, DocInfo &info);
+
+  void allDocs(std::vector<DocId> &result);
 
 private:
   explicit Filestore(const std::string &basedir);
