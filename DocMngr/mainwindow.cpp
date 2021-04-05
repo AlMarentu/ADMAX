@@ -54,38 +54,16 @@ inline std::basic_ios<char> &operator<<(std::basic_ios<char> &s, QString q) {
   return s;
 }
 
+//Objektdefinitionen aus mrpc.h registrieren
+ObjRegister(SessionError);
+ObjRegister(CommandResult);
+ObjRegister(SessionLogin);
+ObjRegister(SessionResult);
 
-
-
-
-//Objektdefinitionen
-
-
-MOBS_ENUM_DEF(DocumenType, DocumentUnknown, DocumentPdf, DocumentJpeg, DocumentTiff, DocumentHtml, DocumentText);
-MOBS_ENUM_VAL(DocumenType, "unk",           "pdf",       "jpg",        "tif",        "htm",        "txt");
-
-class DocumentTags : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(DocumentTags);
-
-  MemVar(std::string, name);
-  MemVar(std::string, content);
-};
-
-
-class Document : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(Document);
-
-  MemVar(uint64_t, docId);
-  MemMobsEnumVar(DocumenType, type);
-  MemVar(std::string, name);
-  MemVar(std::vector<u_char>, content);
-
-};
 ObjRegister(Document);
+ObjRegister(DocumentRaw);
+ObjRegister(SearchDocumentResult);
+
 
 class GetDocument : virtual public mobs::ObjectBase
 {
@@ -95,6 +73,7 @@ public:
   MemVar(uint64_t, docId);
   MemVar(std::string, type);
   MemVar(bool, allowAttach);
+  MemVar(bool, allInfos);
 
 
 };
@@ -108,43 +87,6 @@ public:
 
 };
 
-class DocumentInfo : virtual public mobs::ObjectBase {
-public:
-  ObjInit(DocumentInfo);
-
-  MemVar(uint64_t, docId);
-  MemVector(DocumentTags, tags);
-};
-
-class SearchDocumentResult : virtual public mobs::ObjectBase {
-public:
-  ObjInit(SearchDocumentResult);
-
-  MemVector(DocumentInfo, tags);
-
-};
-ObjRegister(SearchDocumentResult);
-
-class DocumentRaw : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(DocumentRaw);
-
-  MemVar(uint64_t, docId);
-  MemMobsEnumVar(DocumenType, type);
-  MemVar(std::string, name);
-  MemVar(int64_t, size);
-};
-ObjRegister(DocumentRaw);
-
-class GetDocument_2 : virtual public mobs::ObjectBase {
-public:
-  ObjInit(GetDocument_2);
-
-  MemVar(std::string, type);
-  MemVar(std::string, name);
-};
-
 
 class SaveDocument : virtual public mobs::ObjectBase
 {
@@ -155,9 +97,9 @@ public:
   MemVar(std::string, name);  /// obsolet
   MemVar(int64_t, size);
   MemVector(DocumentTags, tags);
-  MemVar(uint64_t, supersedeId);  /// ersetzt objekt
+  MemVar(uint64_t, supersedeId);  /// ersetzt Objekt
   MemVar(uint64_t, parentId);     /// Abgeleitetes Objekt
-  MemVar(std::string, creationInfo); /// Art ser Erzeugung/Ableitung/Ersetzung
+  MemVar(std::string, creationInfo); /// Art der Erzeugung/Ableitung/Ersetzung
   MemVar(mobs::MTime, creationTime); /// Zeitpunkt der Erzeugung, wenn ungleich Eintragezeitpunkt
 
   // TODO kleine Objekte embedded senden
