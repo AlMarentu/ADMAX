@@ -37,6 +37,7 @@
 #include <condition_variable>
 #include <utility>
 #include <sys/stat.h>
+#include <getopt.h>
 
 ObjRegister(SessionError);
 ObjRegister(CommandResult);
@@ -55,13 +56,13 @@ public:
   std::string service = "4444";
   std::string name = "server";
   std::string keystorePath = "keystore";
-  // TODO passphrase
+  std::string passphrase = "12345";
 
   void server();
 
   void genKey() const {
     mobs::generateRsaKey(STRSTR(keystorePath << '/' << name << "_priv.pem"),
-                         STRSTR(keystorePath << '/' << name << ".pem"), "12345");
+                         STRSTR(keystorePath << '/' << name << ".pem"), passphrase);
   }
 
   SessionContext *getSession(u_int id);
@@ -189,7 +190,7 @@ public:
     if (auto *sess = dynamic_cast<SessionLogin *>(obj)) {
       LOG(LM_INFO, "LOGIN " << sess->cipher().size());
       std::vector<u_char> inhalt;
-      mobs::decryptPrivateRsa(sess->cipher(), inhalt, STRSTR(server->keystorePath << '/' << server->name << "_priv.pem"), "12345");
+      mobs::decryptPrivateRsa(sess->cipher(), inhalt, STRSTR(server->keystorePath << '/' << server->name << "_priv.pem"), server->passphrase);
       string buf((char *)&inhalt[0], inhalt.size());
       SessionLoginData data;
       mobs::string2Obj(buf, data, mobs::ConvObjFromStr());
@@ -791,14 +792,70 @@ void MRpcServer::server() {
 }
 
 
+void usage() {
+  cerr << "usage: mrpcsrv [-g] [-p passphrase] [-k keystore]\n"
+       << " -p passphrase default = '12345'\n"
+       << " -k keystore directory for keys, default = 'keystore'\n"
+       << " -n keyname name for key, default = 'server'\n"
+       << " -P Port default = '4444'\n"
+       << " -g generate key and exit\n";
+
+  exit(1);
+}
 int main(int argc, char* argv[]) {
 //  logging::Trace::traceOn = true;
   TRACE("");
 
+  string passphrase = "12345";
+  string keystore = "keystore";
+  string keyname = "server";
+  string port = "4444";
+  bool genkey = false;
+
   try {
-    Filestore::instance("DocSrvFiles");
+    char ch;
+    while ((ch = getopt(argc, argv, "gp:n:P:")) != -1) {
+      switch (ch) {
+        case 'g':
+          genkey = true;
+          break;
+        case 'p':
+          passphrase = optarg;
+          break;
+        case 'k':
+          keystore = optarg;
+          break;
+        case 'n':
+          keyname = optarg;
+          break;
+        case 'P':
+          port = optarg;
+          break;
+        case '?':
+        default:
+          usage();
+      }
+    }
+
     MRpcServer srv;
-//    srv.genKey();
+    srv.passphrase = passphrase;
+    srv.keystorePath = keystore;
+    srv.name = keyname;
+    srv.service = port;
+
+    if (genkey) {
+      srv.genKey();
+      exit(0);
+    }
+
+    ifstream k(STRSTR(keystore << '/' <<  keyname << "_priv.pem"));
+    if (not k.is_open()) {
+      cerr << "private key not found - generate with -g" << endl;
+      exit(1);
+    }
+    k.close();
+
+    Filestore::instance("DocSrvFiles");
     srv.server();
 
 
