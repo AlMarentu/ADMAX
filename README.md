@@ -43,6 +43,8 @@ gemeinsames Verzeichnis erfolgen.
 
 ### Datenablage
 
-Die Ablage der Dokumente erfolgt in einem Verzeichnis, die Metadaten liegen in einer SQLite DB.
+#### Filesystem
+Die Ablage der Dokumente erfolgt als Datei in einem Verzeichnis, die Metadaten liegen in einer SQLite DB.
 
-Eine Speicherung von Dokumenten und Metadaten in einer MongoDB ist geplant
+#### Datenbank
+Eine Speicherung von Dokumenten und Metadaten erfolgt in einer MongoDB.

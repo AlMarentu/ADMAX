@@ -361,14 +361,13 @@ public:
     TRACE("");
 
     auto store = Filestore::instance();
-    auto sz = store->docSize(docId());
-
     list<SearchResult> result;
     DocInfo docInfo;
+    docInfo.id = docId();
     if (allInfos())
       store->tagInfo(docId(), result, docInfo);
     else
-      docInfo.docType = store->getType(docId());
+      store->getDocInfo(docId(), docInfo);
 
     DocumenType docType;
     switch(docInfo.docType) {
@@ -391,18 +390,8 @@ public:
         docType = DocumentText;
         break;
     }
-    fstream file;
-    store->openDocument(docId(), file, false);
-//    struct stat stat_buf;
-//    if (stat(name().c_str(), &stat_buf))
-//      THROW("file not found");
-//    std::streamsize sz = stat_buf.st_size;
-//    ifstream file(name(), ios::binary);
-    if (not file.is_open())
-      THROW("file not found");
 
-
-    if (sz > 8000 and allowAttach()) {
+    if (docInfo.fileSize > 8000 and allowAttach()) {
       DocumentRaw doc;
 
 //    sz = 81;
@@ -418,7 +407,7 @@ public:
         inf.name(tagNames[i.tagId]);
         inf.content(i.tagContent);
       }
-      doc.size(sz);
+      doc.size(docInfo.fileSize);
       doc.type(docType);
       if (allInfos()) {
         doc.info.creationTime(docInfo.creation);
@@ -439,26 +428,11 @@ public:
       ostream ostb(&cry);
       std::streamsize a = xi.streambufO.getOstream().tellp();
 
-      ostb << file.rdbuf();
-      ostb.flush();
-
-//    while (sz) {
-//      array<wchar_t, 16*1024> b;
-//      file.read(&b[0], std::min(std::streamsize(b.size()), sz));
-//      if (file.bad())
-//        THROW("Lesefehler");
-//
-//      for (auto i = file.gcount(); i > 0; i--)
-//
-//      std::streamsize r = ob.sputn(&b[0], file.gcount());
-//      LOG(LM_INFO, "Write File " << file.gcount() << " " << r);
-//      sz -= file.gcount();
-//    }
-      file.close();
+      store->readFile(docInfo.fileName, ostb);
       cry.finalize();
       std::streamsize b = xi.streambufO.getOstream().tellp();
-      if (b - a != AES_BYTES(sz))
-        LOG(LM_ERROR, "Error in size: written " << b - a << " <> calculated " << AES_BYTES(sz));
+      if (b - a != AES_BYTES(docInfo.fileSize))
+        LOG(LM_ERROR, "Error in size: written " << b - a << " <> calculated " << AES_BYTES(docInfo.fileSize));
       LOG(LM_INFO, "WRITTEN: " << a << " + " << b - a);
 
 //      auto *tp = dynamic_cast<mobs::TcpStBuf *>(xi.streambufO.getOstream().rdbuf());
@@ -474,11 +448,13 @@ public:
     } else {
       Document doc;
       vector<u_char> buf;
-      buf.resize(sz);
+      buf.resize(docInfo.fileSize);
       CCBuf ccBuf(buf);
       ostream buffer(&ccBuf);
-      buffer << file.rdbuf();
-      file.close();
+      store->readFile(docInfo.fileName, buffer);
+
+//      buffer << file.rdbuf();
+//      file.close();
 
 //      doc.name(name());
       doc.info.docId(docId());
@@ -640,6 +616,7 @@ public:
       case DocumentUnknown: docInfo.docType = DocUnk; break;
     }
     docInfo.creationInfo = "ATTACHED";
+    docInfo.fileSize = size();
 //    docInfo.creation();
     std::list<TagInfo> tagInfo;
     store->insertTag(tagInfo, "name", name());
@@ -657,15 +634,10 @@ public:
 
     auto store = Filestore::instance();
 
-//    ofstream outFile("save.tmp", ios::binary | ios::trunc);
-    fstream outFile;
-    store->openDocument(dId, outFile, true);
-
-    if (not outFile.is_open())
-      THROW("outfile not open");
-
-    outFile << istr.rdbuf();
-    outFile.close();
+    DocInfo docInfo;
+    docInfo.id = dId;
+    docInfo.fileName = store->writeFile(istr, docInfo);
+    store->documentCreated(docInfo);
 
 
     LOG(LM_INFO, "Attachment saved");
@@ -793,11 +765,13 @@ void MRpcServer::server() {
 
 
 void usage() {
-  cerr << "usage: mrpcsrv [-g] [-p passphrase] [-k keystore]\n"
+  cerr << "usage: mrpcsrv [-g] [-p passphrase] [-k keystore] [-b base]\n"
        << " -p passphrase default = '12345'\n"
        << " -k keystore directory for keys, default = 'keystore'\n"
        << " -n keyname name for key, default = 'server'\n"
        << " -P Port default = '4444'\n"
+       << " -b base dir default = 'DocSrvFiles'\n"
+       << "    mongo uri eg. 'mongodb://localhost:27017'\n"
        << " -g generate key and exit\n";
 
   exit(1);
@@ -806,6 +780,7 @@ int main(int argc, char* argv[]) {
 //  logging::Trace::traceOn = true;
   TRACE("");
 
+  string base = "DocSrvFiles";
   string passphrase = "12345";
   string keystore = "keystore";
   string keyname = "server";
@@ -814,7 +789,7 @@ int main(int argc, char* argv[]) {
 
   try {
     char ch;
-    while ((ch = getopt(argc, argv, "gp:n:P:")) != -1) {
+    while ((ch = getopt(argc, argv, "gp:n:P:b:")) != -1) {
       switch (ch) {
         case 'g':
           genkey = true;
@@ -830,6 +805,9 @@ int main(int argc, char* argv[]) {
           break;
         case 'P':
           port = optarg;
+          break;
+        case 'b':
+          base = optarg;
           break;
         case '?':
         default:
@@ -855,7 +833,7 @@ int main(int argc, char* argv[]) {
     }
     k.close();
 
-    Filestore::instance("DocSrvFiles");
+    Filestore::instance(base);
     srv.server();
 
 

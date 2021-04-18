@@ -35,6 +35,9 @@ public:
 
   MemVar(uint64_t, id, KEYELEMENT1);
   MemVar(int, docType);
+  MemVar(std::string, fileName); // internal name
+  MemVar(int64_t, fileSize);
+  MemVar(std::string, checksum);
   MemVar(uint64_t, supersedeId);
   MemVar(uint64_t, parentId);
   MemVar(std::string, creationInfo);
@@ -93,12 +96,18 @@ Filestore::Filestore(const std::string &basedir)  : base(basedir) {
     throw std::runtime_error("Filestore already exists");
   // Datenbank Verbindung einrichten
 
-
+  std::string dbname;
   std::string db = "sqlite://";
   db += basedir;
   db += "/sqlite.db";
+
+  if (basedir.find("mongodb://") == 0) {
+    db = basedir;
+    dbname = "docsrv";
+  }
+
   // Datenbank-Verbindungen
-  dbMgr.addConnection("docsrv", mobs::ConnectionInformation(db, ""));
+  dbMgr.addConnection("docsrv", mobs::ConnectionInformation(db, dbname));
   DMGR_Counter c;
   DMGR_Document d;
   DMGR_TagInfo t;
@@ -135,6 +144,7 @@ void Filestore::newDocument(DocInfo &doc, std::list<TagInfo> tags) {
   DMGR_Document dbd;
   dbd.id(doc.id);
   dbd.docType(doc.docType);
+  dbd.fileSize(doc.fileSize);
   dbd.parentId(doc.parentId);
   dbd.creation(doc.creation);
   dbd.insertTime(doc.insertTime);
@@ -163,6 +173,18 @@ void Filestore::newDocument(DocInfo &doc, std::list<TagInfo> tags) {
   }
 }
 
+void Filestore::documentCreated(DocInfo &info) {
+  LOG(LM_INFO, "documentCreated " << info.id << " " << info.fileName);
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+
+  DMGR_Document dbd;
+  dbd.id(info.id);
+  if (not dbi.load(dbd))
+    THROW("Document missing");
+  dbd.fileName(info.fileName);
+  dbi.save(dbd);
+}
+
 void Filestore::supersedeDocument(DocInfo &doc, DocId supersedeId) {
 
 }
@@ -173,33 +195,44 @@ Filestore *Filestore::instance(const std::string &basedir) {
   return store;
 }
 
-void Filestore::openDocument(DocId id, std::fstream &stream, bool create) {
-  LOG(LM_INFO, "openDocument " << PARAM(create));
-  std::stringstream str;
-  str << base << '/' << std::hex << std::setfill('0') << std::setw(8) << id;
-  stream.open(str.str(), std::ios::binary | std::fstream::in | (create ? std::fstream::out | std::fstream::trunc : 0));
-  if (not stream.is_open())
-    THROW("file open failed " << str.str());
-}
 
-DocType Filestore::getType(DocId id) {
+std::string Filestore::writeFile(std::istream &source, const DocInfo &info) {
+  LOG(LM_INFO, "writeFile ");
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
-  DMGR_Document d;
-  d.id(id);
-  if (dbi.load(d))
-    return DocType(d.docType());
-  else
-    LOG(LM_ERROR, "Document not found");
-  return DocUnk;
+  if (dbi.getConnection()->connectionType() == u8"Mongo") {
+    return dbi.getConnection()->uploadFile(dbi, source);
+  } else {
+    std::string name = STRSTR(std::hex << std::setfill('0') << std::setw(8) << info.id);
+    std::stringstream str;
+    str << base << '/' << name;
+    std::ofstream of(str.str(), std::ios::binary | std::fstream::trunc);
+    if (not of.is_open())
+      THROW("file open failed " << str.str());
+    of << source.rdbuf();
+    of.close();
+    if (of.bad())
+      THROW("file write failed " << str.str());
+
+    return name;
+  }
 }
 
-std::streamsize Filestore::docSize(DocId id) {
-  std::stringstream str;
-  str << base << '/' << std::hex << std::setfill('0') << std::setw(8) << id;
-  struct stat stat_buf;
-  if (stat(str.str().c_str(), &stat_buf))
-    THROW("file not found");
-  return stat_buf.st_size;
+void Filestore::readFile(const std::string &name, std::ostream &dest) {
+  LOG(LM_INFO, "readFile " << name);
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  if (dbi.getConnection()->connectionType() == u8"Mongo") {
+    return dbi.getConnection()->downloadFile(dbi, name, dest);
+  } else {
+    std::stringstream str;
+    str << base << '/' << name;
+    std::ifstream inf(str.str(), std::ios::binary);
+    if (not inf.is_open())
+      THROW("file open failed " << str.str());
+    dest << inf.rdbuf();
+    inf.close();
+    if (inf.bad())
+      THROW("file read failed " << str.str());
+  }
 }
 
 void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &tagName, const std::string &content) {
@@ -350,6 +383,27 @@ void Filestore::tagSearch(const std::map<TagId, TagSearch> &searchList, std::lis
 }
 
 
+void Filestore::getDocInfo(DocId id, DocInfo &doc) {
+  LOG(LM_INFO, "info ");
+
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+
+  DMGR_Document dbd;
+  dbd.id(id);
+  if (not dbi.load(dbd))
+    THROW("document not found");
+
+  doc.docType = DocType(dbd.docType());
+  doc.fileName = dbd.fileName();
+  doc.fileSize = dbd.fileSize();
+  doc.checkSum = dbd.checksum();
+  doc.parentId = dbd.parentId();
+  doc.creation = dbd.creation();
+  doc.insertTime = dbd.insertTime();
+  doc.creator = dbd.creator();
+  doc.creationInfo = dbd.creationInfo();
+}
+
 void Filestore::tagInfo(DocId id, std::list<SearchResult> &result, DocInfo &doc) {
   LOG(LM_INFO, "info ");
   result.clear();
@@ -362,6 +416,9 @@ void Filestore::tagInfo(DocId id, std::list<SearchResult> &result, DocInfo &doc)
     THROW("document not found");
 
   doc.docType = DocType(dbd.docType());
+  doc.fileName = dbd.fileName();
+  doc.fileSize = dbd.fileSize();
+  doc.checkSum = dbd.checksum();
   doc.parentId = dbd.parentId();
   doc.creation = dbd.creation();
   doc.insertTime = dbd.insertTime();

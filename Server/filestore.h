@@ -36,6 +36,9 @@ class DocInfo {
 public:
   DocId id;
   DocType docType;
+  std::string fileName; // server internal filename
+  int64_t fileSize = 0;
+  std::string checkSum;
   DocId parentId = 0;
   DocId supersedeId = 0;
   std::string creationInfo;
@@ -103,13 +106,13 @@ class Filestore {
 public:
   static Filestore *instance(const std::string &basedir = "");
 
-  void openDocument(DocId id, std::fstream &stream, bool create);
-
-  std::streamsize docSize(DocId id);
-  DocType getType(DocId id);
-
+  std::string writeFile(std::istream &source, const DocInfo &info);
+  void readFile(const std::string &file, std::ostream &dest);
 
   void newDocument(DocInfo &doc, std::list<TagInfo>);
+  /// schreibt Dateinamen in DB
+  void documentCreated(DocInfo &doc);
+
   void supersedeDocument(DocInfo &doc, DocId supersedeId);
 
   void insertTag(std::list<TagInfo> &tagList, const std::string &tagName, const std::string &content);
@@ -121,6 +124,8 @@ public:
   void tagSearch(const std::map<TagId, TagSearch> &searchList, std::list<SearchResult> &result);
   /// tag info zu einem Dokument
   void tagInfo(DocId id, std::list<SearchResult> &result, DocInfo &info);
+  /// document indo
+  void getDocInfo(DocId id, DocInfo &info);
 
   void allDocs(std::vector<DocId> &result);
 
