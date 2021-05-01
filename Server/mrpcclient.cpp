@@ -219,9 +219,10 @@ void client(const string &mode, const string& server, int port, const string &ke
     string serverkey = keystore + "server.pem";
     string privkey = keystore + keyname + "_priv.pem";
 
-    mobs::tcpstream con(server, port);
+    string service = to_string(port);
+    mobs::tcpstream con(server, service);
     if (not con.is_open())
-      throw runtime_error("cannot connect");
+      throw runtime_error("can't connect");
 
     LOG(LM_INFO, "OK");
     mobs::CryptOstrBuf streambufO(con);
@@ -514,6 +515,7 @@ void usage() {
        << " -S server default = 'localhost'\n"
        << " -P Port default = '4444'\n"
        << " commands:\n"
+       << "  genkey ... generate key pair\n"
        << "  dump ... dump database\n"
        << "  restore ... restore database\n"
        << "  ping ... ping server\n";
