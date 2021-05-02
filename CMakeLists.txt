@@ -8,7 +8,6 @@ endif()
 
 include_directories(${CMAKE_SOURCE_DIR}/../MObs)
 find_library(MOBS_LIBRARIES mobs PATHS ${CMAKE_SOURCE_DIR}/../MObs/cmake-build-debug/mobs NO_DEFAULT_PATH)
-#set(MOBS_LIBRARIES ${CMAKE_SOURCE_DIR}/../MObs/cmake-build-debug/mobs/libmobs.dylib)
 
 add_subdirectory(Server)
 
