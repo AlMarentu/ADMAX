@@ -7,7 +7,8 @@ if(NOT DEFINED CMAKE_CXX_STANDARD)
 endif()
 
 include_directories(${CMAKE_SOURCE_DIR}/../MObs)
-set(MOBS_LIBRARIES ${CMAKE_SOURCE_DIR}/../MObs/cmake-build-debug/mobs/libmobs.dylib)
+find_library(MOBS_LIBRARIES mobs PATHS ${CMAKE_SOURCE_DIR}/../MObs/cmake-build-debug/mobs NO_DEFAULT_PATH)
+#set(MOBS_LIBRARIES ${CMAKE_SOURCE_DIR}/../MObs/cmake-build-debug/mobs/libmobs.dylib)
 
 add_subdirectory(Server)
 
