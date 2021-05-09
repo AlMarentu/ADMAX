@@ -500,7 +500,7 @@ void MainWindow::loadDocument(int64_t doc)
       LOG(LM_INFO, "RESULT ");
       if (auto pic = dynamic_cast<Document *>(obj)) {
         if (pic->type() == DocumentPdf) {
-          ui->widget->showPdfFile(QByteArray((char *)&pic->content()[0], int(pic->content().size())));
+          ui->widget->showPdfBuffer(QByteArray((char *) &pic->content()[0], int(pic->content().size())));
         } else {
           QPixmap pixmap;
           pixmap.loadFromData(&pic->content()[0], pic->content().size());
@@ -513,7 +513,7 @@ void MainWindow::loadDocument(int64_t doc)
         ui->lineEdit2->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
 
         if (pic->type() == DocumentPdf) {
-          ui->widget->showPdfFile(QByteArray((char *)p, int(pic->size())));
+          ui->widget->showPdfBuffer(QByteArray((char *) p, int(pic->size())));
         } else {
           pixmap.loadFromData(p, pic->size());
           ui->widget->showPicture(pixmap);

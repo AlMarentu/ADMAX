@@ -630,6 +630,7 @@ public:
     TRACE("");
     LOG(LM_INFO, "Do attachment " << name() << " size=" << size() << " " << AES_BYTES(size()));
     crypt.setReadLimit(AES_BYTES(size()));
+    crypt.hashAlgorithm("sha1");
     istream istr(&crypt);
 
     auto store = Filestore::instance();
@@ -637,6 +638,8 @@ public:
     DocInfo docInfo;
     docInfo.id = dId;
     docInfo.fileName = store->writeFile(istr, docInfo);
+    docInfo.checkSum = crypt.hashStr();
+    LOG(LM_INFO, "HASH " << crypt.hashStr());
     store->documentCreated(docInfo);
 
 

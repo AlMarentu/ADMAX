@@ -16,11 +16,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//#define POPPLER
 
 #include "viewer.h"
 #include "ui_viewer.h"
+#ifdef POPPLER
 #include "poppler-qt5.h"
 #include "poppler-form.h"
+#else
+#include <QPdfDocument>
+#endif
+#include <QBuffer>
 #include <QLabel>
 #include <QPainter>
 #include <QLineEdit>
@@ -30,16 +36,22 @@
 #include <QButtonGroup>
 #include <QScrollBar>
 #include <QPaintEvent>
+#include <string>
 #include "mobs/logging.h"
 
-inline std::basic_ios<char> &operator<<(std::basic_ios<char> &s, QString q) {
-  s << q.toUtf8().data();
-  return s;
-}
+//inline std::basic_ios<char> &operator<<(std::basic_ios<char> &s, const QString &q) {
+//  s << std::string(q.toUtf8().data());
+//  return s;
+//}
 
 namespace {
 
 class PdfPage;
+#ifdef POPPLER
+typedef Poppler::Document PdfDocument;
+#else
+typedef QPdfDocument PdfDocument;
+#endif
 
 class MyLabel : public QLabel {
 public:
@@ -64,14 +76,17 @@ protected:
 
 class PdfFormField {
 public:
+#if POPPLER
   PdfFormField(Poppler::FormField *f, MyLabel *l) : formField(f), label(l) {};
   Poppler::FormField *formField;
+#endif
   MyLabel *label;
   QWidget *widget = nullptr;
   int fontSize = 0;
 
   void rePos(double dpi) {
     if (widget) {
+#if POPPLER
       auto rect = label->getRect(formField->rect());
       widget->resize(rect.width(), rect.height());
       widget->move(rect.x(), rect.y());
@@ -80,6 +95,7 @@ public:
         font.setPointSizeF( dpi / 75 * fontSize); // TODO scaling testen
         widget->setFont(font);
       }
+#endif
     }
   }
 
@@ -90,14 +106,18 @@ class PdfPage {
 public:
   MyLabel *label = nullptr;
   QLabel *labelThumb = nullptr;
+#ifdef POPPLER
   Poppler::Page* docPage = nullptr;
+#endif
   int pgNum = 0;
   int width = 0;
   int height = 0;
   QSizeF size{};
 
   ~PdfPage() {
+#ifdef POPPLER
     delete docPage;
+#endif
   }
 
   void resize(double dpi) {
@@ -107,7 +127,8 @@ public:
       label->setMinimumSize(dpi * size.width() / 72.0, dpi * size.height() / 72.0);
     }
   }
-  void render(Poppler::Document* document, double dpi) {
+  void render(PdfDocument* document, double dpi) {
+#ifdef POPPLER
     Poppler::Page* pdfPage = docPage;
     if (not pdfPage)
       document->page(pgNum);  // Document starts at page 0
@@ -115,9 +136,14 @@ public:
       // ... error message ...
       return;
     }
-
-    // Generate a QImage of the rendered page
     QImage image = pdfPage->renderToImage(dpi, dpi);
+#else
+    QSize sz(dpi * size.width() / 72.0, dpi * size.height() / 72.0);
+    // Generate a QImage of the rendered page
+    QPdfDocumentRenderOptions opt;
+    opt.setRenderFlags(QPdf::RenderAnnotations);
+    QImage image = document->render(pgNum, sz, opt);
+#endif
     if (image.isNull()) {
       // ... error message ...
       return;
@@ -134,8 +160,10 @@ public:
 // ... use image ...
 
 // after the usage, the page must be deleted
+#ifdef POPPLER
     if (not docPage)  // Page wurde lokal erzeugt
       delete pdfPage;
+#endif
   }
 
 
@@ -158,7 +186,10 @@ public:
   double aktDpi = 150.0;
   double xPos = 0.0;
   double yPos = 0.0;
-  Poppler::Document* document = nullptr;
+#ifndef POPPLER
+  QByteArray bytes;
+#endif
+  PdfDocument *document = nullptr;
   std::list<PdfFormField> formFields;
   QPixmap pixmap;
 };
@@ -200,7 +231,9 @@ Viewer::~Viewer()
 
 void Viewer::showPdfFile(QString filename) {
   clearViewer();
-  Poppler::Document *document = Poppler::Document::load(filename);
+  PdfDocument *document = nullptr;
+#ifdef POPPLER
+  document = Poppler::Document::load(filename);
   if (!document || document->isLocked()) {
 
     // ... error message ....
@@ -208,7 +241,15 @@ void Viewer::showPdfFile(QString filename) {
     delete document;
     return;
   }
-
+#else
+  document = new QPdfDocument(this);
+  document->load(filename);
+  if (document->status() == QPdfDocument::Status::Error) {
+    LOG(LM_ERROR, "Error loading Document");
+    delete document;
+    return;
+  }
+#endif
 
   // Paranoid safety check
   if (document == 0) {
@@ -219,9 +260,12 @@ void Viewer::showPdfFile(QString filename) {
   showDocument();
 }
 
-void Viewer::showPdfFile(const QByteArray &bytes) {
+void Viewer::showPdfBuffer(const QByteArray &bytes) {
   clearViewer();
-  Poppler::Document *document = Poppler::Document::loadFromData(bytes);
+  PdfDocument *document = nullptr;
+  LOG(LM_INFO, "SHOW BUFFER");
+#ifdef POPPLER
+  document = Poppler::Document::loadFromData(bytes);
   if (!document) {
 
     // ... error message ....
@@ -229,6 +273,18 @@ void Viewer::showPdfFile(const QByteArray &bytes) {
     delete document;
     return;
   }
+#else
+  data->bytes = bytes;
+  document = new QPdfDocument(this);
+  QBuffer *buffer = new QBuffer(&data->bytes, document);
+  buffer->open(QIODevice::ReadOnly);
+  document->load(buffer);
+  if (document->status() == QPdfDocument::Status::Error) {
+    LOG(LM_ERROR, "Error loading Document");
+    delete document;
+    return;
+  }
+#endif
 
   data->document = document;
   showDocument();
@@ -236,30 +292,43 @@ void Viewer::showPdfFile(const QByteArray &bytes) {
 
 void Viewer::showDocument() {
 
-  ui->horizontalSliderZoom->setRange(20, 150);
+  ui->horizontalSliderZoom->setRange(20, 200);
   ui->horizontalSliderZoom->setValue(150);
 
-  QWidget *widget = new QWidget(this);
+  auto widget = new QWidget(this);
+  QPalette p = palette();
+  p.setColor(QPalette::Background, QColorConstants::White);
   data->grid = new QGridLayout(widget);
   ui->scrollArea->setWidget(widget);
 
-
+#ifdef POPPLER
   int np = data->document->numPages();
+#else
+  int np = data->document->pageCount();
+#endif
   data->pages.resize(np);
   for (int i = 0; i < np; i++) {
     PdfPage &page = data->pages[i];
     page.pgNum = i;
+#ifdef POPPLER
     page.docPage = data->document->page(i);
     page.size = page.docPage->pageSizeF();
+#else
+    page.size = data->document->pageSize(i);
+#endif
     page.label = new MyLabel(this, &page, data);
+    page.label->setPalette(p);
+    page.label->setAutoFillBackground(true);
     data->grid->addWidget(page.label, i, 0);
     page.label->setScaledContents(true);
     page.resize(data->aktDpi);
+#ifdef POPPLER
     QList<Poppler::FormField *> fields = page.docPage->formFields();
     for (auto f:fields) {
       if (f)
         data->formFields.emplace_back(f, page.label);
     }
+#endif
   }
   ui->spinBoxPage->setMinimum(1);
   ui->spinBoxPage->setMaximum(np +1);
@@ -309,6 +378,7 @@ void Viewer::editForm() {
   ui->pushButtonEditCancel->setEnabled(true);
   ui->pushButtonThumb1->setEnabled(false);
   std::map<int, QButtonGroup *> buttonGrpups;
+#ifdef POPPLER
   for (auto &ff:data->formFields) {
 //    QRect rect = ff.label->getRect(ff.formField->rect());
 //    LOG(LM_INFO, "Field " << ff.formField->name().toUtf8().data() << " " << rect.x() << "," << rect.y() << " " << rect.width() << "x" << rect.right());
@@ -380,6 +450,7 @@ void Viewer::editForm() {
       ff.widget->show();
     }
   }
+#endif
 }
 
 
@@ -389,6 +460,7 @@ void Viewer::cancelEditForm() {
   ui->pushButtonEdit->setVisible(true);
   ui->pushButtonEditCancel->setEnabled(false);
   ui->pushButtonThumb1->setEnabled(true);
+#ifdef POPPLER
   for (auto &ff:data->formFields) {
     if (auto but = dynamic_cast<Poppler::FormFieldButton *>(ff.formField)) {
       LOG(LM_INFO, "Button " << ff.formField->id() << " " << but->caption().toUtf8().data());
@@ -403,6 +475,7 @@ void Viewer::cancelEditForm() {
     delete ff.widget;
     ff.widget = nullptr;
   }
+#endif
 }
 
 void Viewer::saveEditForm() {
@@ -411,6 +484,7 @@ void Viewer::saveEditForm() {
   ui->pushButtonEdit->setVisible(true);
   ui->pushButtonEditCancel->setEnabled(false);
   ui->pushButtonThumb1->setEnabled(true);
+#ifdef POPPLER
   for (auto &ff:data->formFields) {
     if (auto but = dynamic_cast<Poppler::FormFieldButton *>(ff.formField)) {
       LOG(LM_INFO, "Button ");
@@ -448,6 +522,7 @@ void Viewer::saveEditForm() {
     delete ff.widget;
     ff.widget = nullptr;
   }
+#endif
 }
 
 void Viewer::vRange(int min, int max) {
@@ -520,18 +595,22 @@ void Viewer::thumbnails(bool on) {
 //      data->gridThumb = new QGridLayout(widget);
       ui->scrollAreaThumb->setWidget(data->thumbs);
 
+      QPalette pal = palette();
+      pal.setColor(QPalette::Background, QColorConstants::White);
       int cols = 3;
       double dpi = 25.0;
       int maxX = 0;
       int maxY = 0;
       for (auto &p:data->pages) {
         p.labelThumb = new QLabel(data->thumbs);
+        p.labelThumb->setPalette(pal);
+        p.labelThumb->setAutoFillBackground(true);
 //        data->gridThumb->addWidget(p.labelThumb, p.pgNum / cols, p.pgNum % cols);
 //        p.labelThumb->setScaledContents(true);
 //        p.labelThumb->resize(dpi * p.size.width() / 72.0, dpi * p.size.height() / 72.0);
 //        p.labelThumb->setMaximumSize(dpi * p.size.width() / 72.0, dpi * p.size.height() / 72.0);
 //        p.labelThumb->setMinimumSize(dpi * p.size.width() / 72.0, dpi * p.size.height() / 72.0);
-
+#ifdef POPPLER
         Poppler::Page *pdfPage = p.docPage;
         if (not pdfPage)
           data->document->page(p.pgNum);  // Document starts at page 0
@@ -546,6 +625,11 @@ void Viewer::thumbnails(bool on) {
           image = pdfPage->renderToImage(dpi, dpi);
         else
           LOG(LM_INFO, "USING THUMBNAIL");
+#else
+        QPdfDocumentRenderOptions opt;
+        QSize sz(dpi * p.size.width() / 72.0, dpi * p.size.height() / 72.0);
+        QImage image = data->document->render(p.pgNum, sz, opt);
+#endif
         if (image.isNull()) {
           // ... error message ...
           continue;
@@ -566,9 +650,11 @@ void Viewer::thumbnails(bool on) {
 //    ui->scrollArea->setWidget(label);
 // ... use image ...
 
+#ifdef POPPLER
 // after the usage, the page must be deleted
-        if (not p.docPage)  // Page wurde lokal erzeugt
-          delete pdfPage;
+//        if (not p.docPage)  // Page wurde lokal erzeugt
+//          delete pdfPage;
+#endif
       }
       data->thumbSize = QSize(maxX, maxY);
     }
@@ -643,7 +729,12 @@ void Viewer::clearViewer() {
   data->pages.clear();
   data->thumbs = nullptr;
   data->grid = nullptr;
+#ifdef POPPLER
   delete data->document;
+#else
+  data->document->close();
+  data->document->deleteLater();
+#endif
   data->document = nullptr;
 
 }

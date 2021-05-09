@@ -54,7 +54,7 @@ public:
     ~Viewer();
 
   void showPdfFile(QString file);
-  void showPdfFile(const QByteArray &data);
+  void showPdfBuffer(const QByteArray &data);
   void showPicture(const QPixmap &pixmap);
   void clearViewer();
 private:

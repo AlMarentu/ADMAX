@@ -12,8 +12,8 @@ set (CMAKE_AUTORCC ON)
 set (CMAKE_AUTOUIC ON)
 
 set (QT_VERSION 5)
-set (REQUIRED_LIBS Core Gui Widgets Network)
-set (REQUIRED_LIBS_QUALIFIED Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network)
+set (REQUIRED_LIBS Core Gui Widgets Network Pdf)
+set (REQUIRED_LIBS_QUALIFIED Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network Qt5::Pdf)
 
 
 include_directories(${CMAKE_SOURCE_DIR}/Server)

@@ -412,6 +412,7 @@ void MrpcClient::attachment(QFile *f) {
   iv.resize(mobs::CryptBufAes::iv_size());
   mobs::CryptBufAes::getRand(iv);
   mobs::CryptBufAes cry(data->xr.sessionKey, iv, "", true);
+//  cry.hashAlgorithm("sha1");
   data->ostr << '\0';
   cry.setOstr(data->ostr);
   data->sendFile = f;
@@ -745,6 +746,7 @@ u_char *MrpcClient::getAttachment(int64_t sz, int percent) {
   iv.resize(mobs::CryptBufAes::iv_size());
   mobs::CryptBufAes::getRand(iv);
   data->crypt = new mobs::CryptBufAes(data->xr.sessionKey, iv, "", true);
+  data->crypt->hashAlgorithm("sha1");
   data->crypt->setIstr(data->iBstr);
   data->attachmentStream = new std::istream(data->crypt);
   data->crypt->setReadLimit(mobs::CryptBufAes::iv_size() + (sz + 16) / 16 * 16);
@@ -753,6 +755,7 @@ u_char *MrpcClient::getAttachment(int64_t sz, int percent) {
   }
 //  data->iBstr.setf(std::ios::skipws);
   bool ok = not data->crypt->bad();
+  LOG(LM_INFO, "HASH " << data->crypt->hashStr());
   delete data->crypt;
   data->crypt = nullptr;
   if (not ok) {
