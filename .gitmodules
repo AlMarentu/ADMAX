@@ -1,0 +1,4 @@
+[submodule "extern/MObs"]
+	path = extern/MObs
+	url = ../MObs.git
+	branch = master
