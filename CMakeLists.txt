@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1...3.16)
+cmake_minimum_required(VERSION 3.1.0)
 project(ADMAX LANGUAGES CXX)
 project(ADMAX VERSION 0.0.1)
 
@@ -6,9 +6,6 @@ project(ADMAX VERSION 0.0.1)
 if(APPLE)
     # hombrew Version
     set (CMAKE_PREFIX_PATH /usr/local/opt/openssl)
-elseif(WIN32)
-    # https://curl.se/windows/dl-7.76.1/openssl-1.1.1k-win32-mingw.zip
-    set (CMAKE_PREFIX_PATH "C:/openssl-1.1.1k-win32-mingw")
 endif()
 message(STATUS "CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}")
 

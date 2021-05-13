@@ -16,11 +16,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//#define POPPLER
+#define USE_POPPLER
 
 #include "viewer.h"
 #include "ui_viewer.h"
-#ifdef POPPLER
+#ifdef USE_POPPLER
 #include "poppler-qt5.h"
 #include "poppler-form.h"
 #else
@@ -47,7 +47,7 @@
 namespace {
 
 class PdfPage;
-#ifdef POPPLER
+#ifdef USE_POPPLER
 typedef Poppler::Document PdfDocument;
 #else
 typedef QPdfDocument PdfDocument;
@@ -76,7 +76,7 @@ protected:
 
 class PdfFormField {
 public:
-#if POPPLER
+#ifdef USE_POPPLER
   PdfFormField(Poppler::FormField *f, MyLabel *l) : formField(f), label(l) {};
   Poppler::FormField *formField;
 #endif
@@ -86,7 +86,7 @@ public:
 
   void rePos(double dpi) {
     if (widget) {
-#if POPPLER
+#ifdef USE_POPPLER
       auto rect = label->getRect(formField->rect());
       widget->resize(rect.width(), rect.height());
       widget->move(rect.x(), rect.y());
@@ -106,7 +106,7 @@ class PdfPage {
 public:
   MyLabel *label = nullptr;
   QLabel *labelThumb = nullptr;
-#ifdef POPPLER
+#ifdef USE_POPPLER
   Poppler::Page* docPage = nullptr;
 #endif
   int pgNum = 0;
@@ -115,7 +115,7 @@ public:
   QSizeF size{};
 
   ~PdfPage() {
-#ifdef POPPLER
+#ifdef USE_POPPLER
     delete docPage;
 #endif
   }
@@ -128,7 +128,7 @@ public:
     }
   }
   void render(PdfDocument* document, double dpi) {
-#ifdef POPPLER
+#ifdef USE_POPPLER
     Poppler::Page* pdfPage = docPage;
     if (not pdfPage)
       document->page(pgNum);  // Document starts at page 0
@@ -160,7 +160,7 @@ public:
 // ... use image ...
 
 // after the usage, the page must be deleted
-#ifdef POPPLER
+#ifdef USE_POPPLER
     if (not docPage)  // Page wurde lokal erzeugt
       delete pdfPage;
 #endif
@@ -186,7 +186,7 @@ public:
   double aktDpi = 150.0;
   double xPos = 0.0;
   double yPos = 0.0;
-#ifndef POPPLER
+#ifndef USE_POPPLER
   QByteArray bytes;
 #endif
   PdfDocument *document = nullptr;
@@ -232,7 +232,7 @@ Viewer::~Viewer()
 void Viewer::showPdfFile(QString filename) {
   clearViewer();
   PdfDocument *document = nullptr;
-#ifdef POPPLER
+#ifdef USE_POPPLER
   document = Poppler::Document::load(filename);
   if (!document || document->isLocked()) {
 
@@ -264,7 +264,7 @@ void Viewer::showPdfBuffer(const QByteArray &bytes) {
   clearViewer();
   PdfDocument *document = nullptr;
   LOG(LM_INFO, "SHOW BUFFER");
-#ifdef POPPLER
+#ifdef USE_POPPLER
   document = Poppler::Document::loadFromData(bytes);
   if (!document) {
 
@@ -301,7 +301,7 @@ void Viewer::showDocument() {
   data->grid = new QGridLayout(widget);
   ui->scrollArea->setWidget(widget);
 
-#ifdef POPPLER
+#ifdef USE_POPPLER
   int np = data->document->numPages();
 #else
   int np = data->document->pageCount();
@@ -310,7 +310,7 @@ void Viewer::showDocument() {
   for (int i = 0; i < np; i++) {
     PdfPage &page = data->pages[i];
     page.pgNum = i;
-#ifdef POPPLER
+#ifdef USE_POPPLER
     page.docPage = data->document->page(i);
     page.size = page.docPage->pageSizeF();
 #else
@@ -322,7 +322,7 @@ void Viewer::showDocument() {
     data->grid->addWidget(page.label, i, 0);
     page.label->setScaledContents(true);
     page.resize(data->aktDpi);
-#ifdef POPPLER
+#ifdef USE_POPPLER
     QList<Poppler::FormField *> fields = page.docPage->formFields();
     for (auto f:fields) {
       if (f)
@@ -378,7 +378,7 @@ void Viewer::editForm() {
   ui->pushButtonEditCancel->setEnabled(true);
   ui->pushButtonThumb1->setEnabled(false);
   std::map<int, QButtonGroup *> buttonGrpups;
-#ifdef POPPLER
+#ifdef USE_POPPLER
   for (auto &ff:data->formFields) {
 //    QRect rect = ff.label->getRect(ff.formField->rect());
 //    LOG(LM_INFO, "Field " << ff.formField->name().toUtf8().data() << " " << rect.x() << "," << rect.y() << " " << rect.width() << "x" << rect.right());
@@ -460,7 +460,7 @@ void Viewer::cancelEditForm() {
   ui->pushButtonEdit->setVisible(true);
   ui->pushButtonEditCancel->setEnabled(false);
   ui->pushButtonThumb1->setEnabled(true);
-#ifdef POPPLER
+#ifdef USE_POPPLER
   for (auto &ff:data->formFields) {
     if (auto but = dynamic_cast<Poppler::FormFieldButton *>(ff.formField)) {
       LOG(LM_INFO, "Button " << ff.formField->id() << " " << but->caption().toUtf8().data());
@@ -484,7 +484,7 @@ void Viewer::saveEditForm() {
   ui->pushButtonEdit->setVisible(true);
   ui->pushButtonEditCancel->setEnabled(false);
   ui->pushButtonThumb1->setEnabled(true);
-#ifdef POPPLER
+#ifdef USE_POPPLER
   for (auto &ff:data->formFields) {
     if (auto but = dynamic_cast<Poppler::FormFieldButton *>(ff.formField)) {
       LOG(LM_INFO, "Button ");
@@ -610,7 +610,7 @@ void Viewer::thumbnails(bool on) {
 //        p.labelThumb->resize(dpi * p.size.width() / 72.0, dpi * p.size.height() / 72.0);
 //        p.labelThumb->setMaximumSize(dpi * p.size.width() / 72.0, dpi * p.size.height() / 72.0);
 //        p.labelThumb->setMinimumSize(dpi * p.size.width() / 72.0, dpi * p.size.height() / 72.0);
-#ifdef POPPLER
+#ifdef USE_POPPLER
         Poppler::Page *pdfPage = p.docPage;
         if (not pdfPage)
           data->document->page(p.pgNum);  // Document starts at page 0
@@ -650,7 +650,7 @@ void Viewer::thumbnails(bool on) {
 //    ui->scrollArea->setWidget(label);
 // ... use image ...
 
-#ifdef POPPLER
+#ifdef USE_POPPLER
 // after the usage, the page must be deleted
 //        if (not p.docPage)  // Page wurde lokal erzeugt
 //          delete pdfPage;
@@ -729,7 +729,7 @@ void Viewer::clearViewer() {
   data->pages.clear();
   data->thumbs = nullptr;
   data->grid = nullptr;
-#ifdef POPPLER
+#ifdef USE_POPPLER
   delete data->document;
 #else
   data->document->close();

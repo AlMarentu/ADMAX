@@ -2,7 +2,7 @@
 set (CMAKE_CXX_STANDARD 11)
 
 if (CMAKE_HOST_WIN32)
-    set (CMAKE_PREFIX_PATH "C:/Qt/5.15.2/mingw81_64")
+    set (CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} C:/poppler-21.04.0 )
 elseif(CMAKE_HOST_APPLE)
     set (CMAKE_PREFIX_PATH "/usr/local/opt/qt5")
 endif()
@@ -21,11 +21,24 @@ include_directories(${CMAKE_SOURCE_DIR}/DocMngr)
 
 find_library(POPPLER_LIB poppler-qt${QT_VERSION} REQUIRED)
 find_path(POPPLER_PATH poppler REQUIRED)
-include_directories(${POPPLER_PATH}/poppler/qt${QT_VERSION})
-message(STATUS "Poppler=${POPPLER_PATH}/poppler/qt${QT_VERSION} - ${POPPLER_LIB}")
+set(POPPLER_INCLUDE ${POPPLER_PATH}/poppler/qt${QT_VERSION})
+include_directories(${POPPLER_INCLUDE})
+if (WIN32)
+    set(REQUIRED_LIBS ${REQUIRED_LIBS} Xml)
+    set(REQUIRED_LIBS_QUALIFIED ${REQUIRED_LIBS_QUALIFIED} Qt5::Xml)
+    find_library(POPPLERMAIN_LIB poppler REQUIRED)
+    find_library(FREETYPE_LIB freetype REQUIRED)
+    find_library(JPEG_LIB jpeg REQUIRED)
+    find_library(TIFF_LIB tiff REQUIRED)
+    find_library(PNG_LIB png REQUIRED)
+    find_library(Z_LIB zlib REQUIRED)
+    set(POPPLER_LIB  ${POPPLER_LIB} ${POPPLERMAIN_LIB} ${FREETYPE_LIB} ${JPEG_LIB} ${TIFF_LIB} ${PNG_LIB} ${Z_LIB} )
+# jpeg freetype png tiff zlib
+endif()
+message(STATUS "Poppler=${POPPLER_INCLUDE} - ${POPPLER_LIB}")
 
 add_executable (DocMngr main.cpp mainwindow.cpp mainwindow.h mrpccli.cpp mrpccli.h viewer.cpp viewer.h)
 
 find_package (Qt${QT_VERSION} COMPONENTS ${REQUIRED_LIBS} REQUIRED)
 
-target_link_libraries (DocMngr  ${REQUIRED_LIBS_QUALIFIED} ${MOBS_LIBRARIES} ${POPPLER_LIB} )
+target_link_libraries (DocMngr  ${MOBS_LIBRARIES} ${POPPLER_LIB} ${REQUIRED_LIBS_QUALIFIED} )

@@ -137,7 +137,7 @@ void Filestore::newDocument(DocInfo &doc, std::list<TagInfo> tags) {
 
   doc.id = cntr.counter();
   doc.supersedeId = 0;
-  doc.insertTime = std::chrono::system_clock::now();
+  doc.insertTime = mobs::MTimeNow();
   if (doc.creation == mobs::MTime{})
     doc.creation = doc.insertTime;
 
