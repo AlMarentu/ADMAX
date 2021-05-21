@@ -16,7 +16,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#define USE_POPPLER
+//#define USE_POPPLER
 
 #include "viewer.h"
 #include "ui_viewer.h"

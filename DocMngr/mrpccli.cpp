@@ -273,7 +273,7 @@ public:
 MrpcClient::MrpcClient(QWidget *parent) : QObject() {
   LOG(LM_INFO, "MrpcClient");
   data = new MrpcClientData;
-
+  elapsed.start();
   eventLoop = new QEventLoop(this);
 
   progress = new QProgressDialog(tr("Verbindung"), tr("Abbruch"), 0, 100, parent);

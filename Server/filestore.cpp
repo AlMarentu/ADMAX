@@ -20,13 +20,15 @@
 #include "filestore.h"
 #include <exception>
 #include <iomanip>
-#include <strstream>
+#include <sstream>
 #include <fstream>
 #include "mobs/querygenerator.h"
 #include <sys/stat.h>
 #include <set>
 #include "mobs/dbifc.h"
 #include "mobs/logging.h"
+
+#include "mrpc.h"
 
 class DMGR_Document : virtual public mobs::ObjectBase
 {
@@ -60,16 +62,34 @@ public:
   MemVar(int64_t, counter, VERSIONFIELD);
 };
 
+class DMGR_TagTransformer : virtual public mobs::ObjectBase {
+public:
+  ObjInit(DMGR_TagTransformer);
+  MemVar(std::string, regex);
+  MemVar(std::string, format);
+};
+
 class DMGR_TagPool : virtual public mobs::ObjectBase {
 public:
   ObjInit(DMGR_TagPool);
   MemVar(int, id, KEYELEMENT1);
   MemVar(int64_t, version, VERSIONFIELD);
-  MemVar(int, tagType); // TagPool::TagType
+  MemVar(int, tagType); // TagPool::TagType  T_Enumeration = 0, T_Date = 1, T_String = 2, T_Number = 3
   MemVar(std::string, name);
-  MemVar(std::string, param);
+  MemVector(DMGR_TagTransformer, transformer); // T_String T_Number
+  MemVarVector(std::string, enumeration, DBJSON); // T_Enumeration wenn leer, dann nur Tag ohne Inhalt
+  MemVar(std::string, searchTag);   // weiteres Tag mit dem Suchinhalt (Methode steht in dessem tagType (> 100)
   MemVar(int, maxSize);
 };
+
+class DMGR_TemplatePool : virtual public TemplateInfo {
+public:
+  ObjInit(DMGR_TemplatePool);
+  MemVar(int64_t, version, VERSIONFIELD);
+
+};
+
+
 
 class DMGR_TagInfo : virtual public mobs::ObjectBase {
 public:
@@ -112,11 +132,13 @@ Filestore::Filestore(const std::string &basedir)  : base(basedir) {
   DMGR_Document d;
   DMGR_TagInfo t;
   DMGR_TagPool p;
+  DMGR_TemplatePool tp;
   auto dbi = dbMgr.getDbIfc("docsrv");
   dbi.structure(c);
   dbi.structure(d);
   dbi.structure(t);
   dbi.structure(p);
+  dbi.structure(tp);
 
 
 }
@@ -458,6 +480,54 @@ void Filestore::allDocs(std::vector<DocId> &result) {
     result.emplace_back(dbd.id());
   }
 }
+
+void Filestore::loadTemplates(std::list<TemplateInfo> &templates) {
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  using Q = mobs::QueryGenerator;
+  Q query;
+  DMGR_TemplatePool tp;
+  for (auto cursor = dbi.query(tp, query);not cursor->eof(); cursor->next()) {
+    dbi.retrieve(tp, cursor);
+    LOG(LM_INFO, tp.to_string());
+    templates.emplace_back();
+    templates.back().carelessCopy(tp);
+  }
+
+  return;
+}
+
+void Filestore::loadTemplatesFromFile(const std::string &filename) {
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  std::ifstream input(filename);
+  std::string buf;
+  if (not input)
+    THROW("cann't read '" << filename);
+
+  char c;
+  while (not input.get(c).eof())
+    buf += c;
+  input.close();
+  ConfigResult cr;
+  mobs::string2Obj(buf, cr); //, mobs::ConvObjFromStr().useExceptUnknown());
+  LOG(LM_INFO, cr.to_string());
+
+  for (auto &t:cr.templates) {
+    DMGR_TemplatePool tp;
+    tp.name(t.name());
+    tp.pool(t.pool());
+    if (dbi.load(tp)) {
+      tp.clearModified();
+    }
+    tp.carelessCopy(t);
+    if (tp.isModified())
+      dbi.save(tp);
+    else
+      LOG(LM_INFO, "nothing changed");
+
+  }
+
+}
+
 
 
 #if 0

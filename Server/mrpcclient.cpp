@@ -40,14 +40,7 @@
 using namespace std;
 
 //Objektdefinitionen
-class Ping : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(Ping);
 
-  MemVar(int, id, KEYELEMENT1);
-  MemVar(int, cnt);
-};
 ObjRegister(Ping);
 
 ObjRegister(SessionError);
@@ -59,32 +52,9 @@ ObjRegister(Document);
 ObjRegister(DocumentRaw);
 
 
-class SaveDocument : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(SaveDocument);
-
-  MemMobsEnumVar(DocumenType, type);
-  MemVar(std::string, name);  /// obsolet
-  MemVar(int64_t, size);
-  MemVector(DocumentTags, tags);
-  MemVar(uint64_t, supersedeId);  /// ersetzt objekt
-  MemVar(uint64_t, parentId);     /// Abgeleitetes Objekt
-  MemVar(std::string, creationInfo); /// Art ser Erzeugung/Ableitung/Ersetzung
-  MemVar(mobs::MTime, creationTime); /// Zeitpunkt der Erzeugung, wenn ungleich Eintragezeitpunkt
-
-  // TODO kleine Objekte embedded senden
-
-};
 
 
-class Dump : virtual public mobs::ObjectBase {
-public:
-  ObjInit(Dump);
 
-
-  MemVar(int, id, KEYELEMENT1);
-};
 
 u_int sessionId = 0;
 vector<u_char> sessionKey;
@@ -209,7 +179,7 @@ public:
 
 
 
-void client(const string &mode, const string& server, int port, const string &keystore, const string &keyname, const string &pass) {
+void client(const string &mode, const string& server, int port, const string &keystore, const string &keyname, const string &pass, const string &file) {
   try {
 //    if (sessionKey.size() != mobs::CryptBufAes::key_size()) {
 //      sessionKey.resize(mobs::CryptBufAes::key_size());
@@ -295,7 +265,7 @@ void client(const string &mode, const string& server, int port, const string &ke
 
       // Objekt schreiben
       if (mode == "dump") {
-        xr.dumpStr.open("admax.dump", ios::trunc | ios::binary | ios::out);
+        xr.dumpStr.open(file, ios::trunc | ios::binary | ios::out);
         if (not xr.dumpStr.is_open())
           THROW("cannot open dump file");
         static mobs::CryptOstrBuf dumpStrbuf(xr.dumpStr);
@@ -307,7 +277,7 @@ void client(const string &mode, const string& server, int port, const string &ke
         Dump d1;
         d1.traverse(xo);
       } else if (mode == "restore") {
-        xr.dumpStr.open("admax.dump", ios::binary | ios::in);
+        xr.dumpStr.open(file, ios::binary | ios::in);
         if (not xr.dumpStr.is_open())
           THROW("cannot open dump file");
         LOG(LM_INFO, "READ DUMP");
@@ -514,6 +484,7 @@ void usage() {
        << " -n keyname name for keys, default = 'client'\n"
        << " -S server default = 'localhost'\n"
        << " -P Port default = '4444'\n"
+       << " -f filename default = 'admax.dump'\n"
        << " commands:\n"
        << "  genkey ... generate key pair\n"
        << "  dump ... dump database\n"
@@ -531,11 +502,12 @@ int main(int argc, char* argv[]) {
   string keystore = "keystore";
   string keyname = "client";
   string server = "localhost";
+  string filename = "admax.dump";
   int port = 4444;
 
   try {
     char ch;
-    while ((ch = getopt(argc, argv, "c:p:n:S:P:")) != -1) {
+    while ((ch = getopt(argc, argv, "c:p:n:S:P:f:")) != -1) {
       switch (ch) {
         case 'c':
           mode = optarg;
@@ -551,6 +523,9 @@ int main(int argc, char* argv[]) {
           break;
         case 'S':
           server = optarg;
+          break;
+        case 'f':
+          filename = optarg;
           break;
         case 'P':
           port = stoi(string(optarg));
@@ -578,7 +553,7 @@ int main(int argc, char* argv[]) {
     k.close();
 
 
-    client(mode, server, port, keystore, keyname, passphrase);
+    client(mode, server, port, keystore, keyname, passphrase, filename);
 
 
   }

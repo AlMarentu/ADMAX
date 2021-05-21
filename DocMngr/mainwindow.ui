@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1023</width>
-    <height>813</height>
+    <width>1253</width>
+    <height>835</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -33,6 +33,12 @@
     </item>
     <item row="0" column="0" rowspan="2">
      <widget class="QGroupBox" name="groupBox">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
       <property name="minimumSize">
        <size>
         <width>450</width>
@@ -49,119 +55,41 @@
        <string>Document</string>
       </property>
       <layout class="QGridLayout" name="gridLayout_3">
-       <item row="0" column="0" colspan="3">
-        <widget class="QLineEdit" name="lineEdit1"/>
-       </item>
-       <item row="1" column="4" colspan="2">
-        <widget class="QLineEdit" name="lineEditCnt">
-         <property name="enabled">
-          <bool>true</bool>
-         </property>
-         <property name="mouseTracking">
-          <bool>false</bool>
-         </property>
-         <property name="focusPolicy">
-          <enum>Qt::NoFocus</enum>
-         </property>
-         <property name="acceptDrops">
-          <bool>false</bool>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="0" colspan="6">
-        <widget class="QGroupBox" name="groupBox_2">
-         <property name="title">
-          <string>Tags</string>
-         </property>
-         <layout class="QGridLayout" name="gridLayout_2">
-          <item row="3" column="1">
-           <widget class="QLineEdit" name="lineEditSearch4"/>
-          </item>
-          <item row="2" column="1">
-           <widget class="QLineEdit" name="lineEditSearch3"/>
-          </item>
-          <item row="2" column="0">
-           <widget class="QComboBox" name="comboBoxTag3">
-            <property name="editable">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="0">
-           <widget class="QComboBox" name="comboBoxTag5">
-            <property name="editable">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
-           <widget class="QComboBox" name="comboBoxTag4">
-            <property name="editable">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="0">
-           <widget class="QComboBox" name="comboBoxTag1">
-            <property name="editable">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QComboBox" name="comboBoxTag2">
-            <property name="editable">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="lineEditSearch1"/>
-          </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="lineEditSearch2"/>
-          </item>
-          <item row="4" column="1">
-           <widget class="QLineEdit" name="lineEditSearch5"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item row="4" column="3">
-        <widget class="QPushButton" name="pushButtonSave">
-         <property name="text">
-          <string>save</string>
-         </property>
-        </widget>
-       </item>
-       <item row="6" column="1" colspan="2">
-        <spacer name="horizontalSpacer">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="4" column="4" colspan="2">
-        <widget class="QPushButton" name="pushButtonSearch">
-         <property name="text">
-          <string>search</string>
-         </property>
-        </widget>
-       </item>
-       <item row="6" column="5">
+       <item row="3" column="4">
         <widget class="QPushButton" name="pushButtonGet">
          <property name="text">
           <string>&gt;&gt;&gt;</string>
          </property>
         </widget>
        </item>
-       <item row="5" column="0" colspan="6">
+       <item row="1" column="3" colspan="2">
+        <widget class="QPushButton" name="pushButtonSearch">
+         <property name="text">
+          <string>search</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="2">
+        <widget class="QPushButton" name="pushButtonSave">
+         <property name="text">
+          <string>save</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0" colspan="2">
+        <spacer name="horizontalSpacer_2">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>153</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item row="2" column="0" colspan="5">
         <widget class="QTableWidget" name="tableWidget">
          <property name="editTriggers">
           <set>QAbstractItemView::AnyKeyPressed|QAbstractItemView::DoubleClicked</set>
@@ -180,38 +108,35 @@
          </attribute>
         </widget>
        </item>
-       <item row="1" column="3">
-        <widget class="QLabel" name="label">
-         <property name="text">
-          <string>Zähler</string>
+       <item row="0" column="0" colspan="5">
+        <widget class="QTabWidget" name="tabWidgetTags">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
          </property>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>0</height>
+          </size>
+         </property>
+         <widget class="QWidget" name="tabWidgetTagsPage1" native="true">
+          <attribute name="title">
+           <string/>
+          </attribute>
+         </widget>
         </widget>
        </item>
-       <item row="2" column="0">
-        <widget class="QPushButton" name="pushButtonFile">
-         <property name="text">
-          <string>File </string>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="3" colspan="3">
-        <widget class="QLineEdit" name="lineEdit2"/>
-       </item>
-       <item row="2" column="1" colspan="5">
-        <widget class="QLineEdit" name="lineEditName">
-         <property name="readOnly">
-          <bool>true</bool>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="0" colspan="2">
-        <spacer name="horizontalSpacer_2">
+       <item row="3" column="1">
+        <spacer name="horizontalSpacer">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
          </property>
          <property name="sizeHint" stdset="0">
           <size>
-           <width>153</width>
+           <width>40</width>
            <height>20</height>
           </size>
          </property>
@@ -227,8 +152,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1023</width>
-     <height>22</height>
+     <width>1253</width>
+     <height>24</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuDatei">
@@ -276,20 +201,6 @@
   </customwidget>
  </customwidgets>
  <tabstops>
-  <tabstop>lineEdit1</tabstop>
-  <tabstop>lineEdit2</tabstop>
-  <tabstop>pushButtonFile</tabstop>
-  <tabstop>lineEditName</tabstop>
-  <tabstop>comboBoxTag1</tabstop>
-  <tabstop>lineEditSearch1</tabstop>
-  <tabstop>comboBoxTag2</tabstop>
-  <tabstop>lineEditSearch2</tabstop>
-  <tabstop>comboBoxTag3</tabstop>
-  <tabstop>lineEditSearch3</tabstop>
-  <tabstop>comboBoxTag4</tabstop>
-  <tabstop>lineEditSearch4</tabstop>
-  <tabstop>comboBoxTag5</tabstop>
-  <tabstop>lineEditSearch5</tabstop>
   <tabstop>pushButtonSave</tabstop>
   <tabstop>pushButtonSearch</tabstop>
   <tabstop>tableWidget</tabstop>
@@ -326,22 +237,6 @@
     <hint type="destinationlabel">
      <x>618</x>
      <y>280</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>pushButtonFile</sender>
-   <signal>clicked()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>loadFile()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>94</x>
-     <y>151</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>-7</x>
-     <y>268</y>
     </hint>
    </hints>
   </connection>

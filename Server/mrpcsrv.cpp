@@ -77,18 +77,14 @@ protected:
 
 };
 
-
-class MrpcObject {
+class ExecVisitor : virtual public mobs::ObjVisitor {
 public:
-  virtual void execute(mobs::XmlOut &xmlOut, XmlInput &xi) {
-    THROW("no action");
-  }
-  virtual void executeAttachment(mobs::CryptBufAes &crypt, mobs::XmlOut &xmlOut, XmlInput &xi)  {
-    THROW("no action");
-  }
-
-
+  ExecVisitor(mobs::XmlOut &xmlOut, XmlInput &xi) : m_xmlOut(xmlOut), m_xi(xi) {}
+  void visit(mobs::ObjectBase &obj) override;
+  mobs::XmlOut &m_xmlOut;
+  XmlInput &m_xi;
 };
+
 
 class SessionContext {
 public:
@@ -239,16 +235,18 @@ public:
       error1.traverse(xo);
       // weiteres parsen abbrechen
       stop();
-    } else if (auto mrpc = dynamic_cast<MrpcObject *>(obj)) {
+    } else {
       needEncryption();
 
-      mrpc->execute(xo, *this);
+      ExecVisitor vi(xo, *this);
+      obj->visit(vi);
 
-      if (attachmentObj)
+      if (attachmentInfo.fileSize) {
+        delete obj;
         return;
+      }
     }
-    else
-      THROW("no MRpc object");
+
 
   LOG(LM_INFO, "endEncryption; finish=" << finish);
     endEncryption();
@@ -291,7 +289,7 @@ public:
   bool needDelimiter = true;
   bool encryptedInput = false;
   SessionContext *ctx = nullptr;
-  MrpcObject *attachmentObj = nullptr;
+  DocInfo attachmentInfo{};
 };
 
 
@@ -305,24 +303,13 @@ public:
 
 
 //Objektdefinitionen
-class Ping : virtual public mobs::ObjectBase, virtual public MrpcObject
-{
-public:
-  ObjInit(Ping);
 
 
-  MemVar(int, id, KEYELEMENT1);
-  MemVar(int, cnt);
-
-  void execute(mobs::XmlOut &xmlOut, XmlInput &xi) override {
-    LOG(LM_INFO, "Send duplicate");
-    cnt(cnt()+1);
-    this->traverse(xmlOut);
-  }
-};
-ObjRegister(Ping);
-
-
+void executeRequest(Ping &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
+  LOG(LM_INFO, "Send duplicate");
+  obj.cnt(obj.cnt()+1);
+  obj.traverse(xmlOut);
+}
 
 
 class CCBuf : public std::basic_streambuf<char> {
@@ -346,317 +333,304 @@ public:
 };
 
 
-/// Anforderung Document attached
-class GetDocument : virtual public mobs::ObjectBase, virtual public MrpcObject
-{
-public:
-  ObjInit(GetDocument);
 
-  MemVar(uint64_t, docId);
-  MemVar(std::string, type);
-  MemVar(bool, allowAttach);
-  MemVar(bool, allInfos);
+void executeRequest(GetDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
+  TRACE("");
 
-  void execute(mobs::XmlOut &xmlOut, XmlInput &xi) override {
-    TRACE("");
+  auto store = Filestore::instance();
+  list<SearchResult> result;
+  DocInfo docInfo;
+  docInfo.id = obj.docId();
+  if (obj.allInfos())
+    store->tagInfo(obj.docId(), result, docInfo);
+  else
+    store->getDocInfo(obj.docId(), docInfo);
 
-    auto store = Filestore::instance();
-    list<SearchResult> result;
-    DocInfo docInfo;
-    docInfo.id = docId();
-    if (allInfos())
-      store->tagInfo(docId(), result, docInfo);
-    else
-      store->getDocInfo(docId(), docInfo);
+  DocumenType docType;
+  switch(docInfo.docType) {
+    case DocUnk:
+      docType = DocumentUnknown;
+      break;
+    case DocPdf:
+      docType = DocumentPdf;
+      break;
+    case DocJpeg:
+      docType = DocumentJpeg;
+      break;
+    case DocTiff:
+      docType = DocumentTiff;
+      break;
+    case DocHtml:
+      docType = DocumentHtml;
+      break;
+    case DocText:
+      docType = DocumentText;
+      break;
+  }
 
-    DocumenType docType;
-    switch(docInfo.docType) {
-      case DocUnk:
-        docType = DocumentUnknown;
-        break;
-      case DocPdf:
-        docType = DocumentPdf;
-        break;
-      case DocJpeg:
-        docType = DocumentJpeg;
-        break;
-      case DocTiff:
-        docType = DocumentTiff;
-        break;
-      case DocHtml:
-        docType = DocumentHtml;
-        break;
-      case DocText:
-        docType = DocumentText;
-        break;
-    }
-
-    if (docInfo.fileSize > 8000 and allowAttach()) {
-      DocumentRaw doc;
+  if (docInfo.fileSize > 8000 and obj.allowAttach()) {
+    DocumentRaw doc;
 
 //    sz = 81;
 //    doc.name(name());
-      doc.info.docId(docId());
+    doc.info.docId(obj.docId());
 
-      map<TagId, string> tagNames;
-      for (auto i:result) {
-        auto &inf = doc.info.tags[mobs::MemBaseVector::nextpos];
-        auto tn = tagNames.find(i.tagId);
-        if (tn == tagNames.end())
-          tn = tagNames.emplace(i.tagId, store->tagName(i.tagId)).first;
-        inf.name(tagNames[i.tagId]);
-        inf.content(i.tagContent);
-      }
-      doc.size(docInfo.fileSize);
-      doc.type(docType);
-      if (allInfos()) {
-        doc.info.creationTime(docInfo.creation);
-        doc.info.creationInfo(docInfo.creationInfo);
-      }
+    map<TagId, string> tagNames;
+    for (auto i:result) {
+      auto &inf = doc.info.tags[mobs::MemBaseVector::nextpos];
+      auto tn = tagNames.find(i.tagId);
+      if (tn == tagNames.end())
+        tn = tagNames.emplace(i.tagId, store->tagName(i.tagId)).first;
+      inf.name(tagNames[i.tagId]);
+      inf.content(i.tagContent);
+    }
+    doc.size(docInfo.fileSize);
+    doc.type(docType);
+    if (obj.allInfos()) {
+      doc.info.creationTime(docInfo.creation);
+      doc.info.creationInfo(docInfo.creationInfo);
+    }
 
-      doc.traverse(xmlOut);
-      LOG(LM_INFO, "endEncryption;");
-      xi.endEncryption();
+    doc.traverse(xmlOut);
+    LOG(LM_INFO, "endEncryption;");
+    xi.endEncryption();
 
-      LOG(LM_INFO, "Start attachment type=" << doc.type.toStr(mobs::ConvToStrHint(false)));
-      vector<u_char> iv;
-      iv.resize(mobs::CryptBufAes::iv_size());
-      mobs::CryptBufAes::getRand(iv);
-      mobs::CryptBufAes cry(xi.ctx->key, iv, "", true);
+    LOG(LM_INFO, "Start attachment type=" << doc.type.toStr(mobs::ConvToStrHint(false)));
+    vector<u_char> iv;
+    iv.resize(mobs::CryptBufAes::iv_size());
+    mobs::CryptBufAes::getRand(iv);
+    mobs::CryptBufAes cry(xi.ctx->key, iv, "", true);
 //    xi.streambufO.getOstream().unsetf(ios::skipws);
-      cry.setOstr(xi.streambufO.getOstream());
-      ostream ostb(&cry);
-      std::streamsize a = xi.streambufO.getOstream().tellp();
+    cry.setOstr(xi.streambufO.getOstream());
+    ostream ostb(&cry);
+    std::streamsize a = xi.streambufO.getOstream().tellp();
 
-      store->readFile(docInfo.fileName, ostb);
-      cry.finalize();
-      std::streamsize b = xi.streambufO.getOstream().tellp();
-      if (b - a != AES_BYTES(docInfo.fileSize))
-        LOG(LM_ERROR, "Error in size: written " << b - a << " <> calculated " << AES_BYTES(docInfo.fileSize));
-      LOG(LM_INFO, "WRITTEN: " << a << " + " << b - a);
+    store->readFile(docInfo.fileName, ostb);
+    cry.finalize();
+    std::streamsize b = xi.streambufO.getOstream().tellp();
+    if (b - a != AES_BYTES(docInfo.fileSize))
+      LOG(LM_ERROR, "Error in size: written " << b - a << " <> calculated " << AES_BYTES(docInfo.fileSize));
+    LOG(LM_INFO, "WRITTEN: " << a << " + " << b - a);
 
 //      auto *tp = dynamic_cast<mobs::TcpStBuf *>(xi.streambufO.getOstream().rdbuf());
 //      LOG(LM_INFO, "CHECK STATE " << tp);
 //      if (tp and tp->bad())  // TODO iostream-exception
 //        throw runtime_error("stream lost");
-      LOG(LM_INFO, "CHECK STATE XX");
+    LOG(LM_INFO, "CHECK STATE XX");
 
-      xi.streambufO.getOstream().flush();
+    xi.streambufO.getOstream().flush();
 //    xi.streambufO.getOstream().setf(ios::skipws);
 //    xi.streambufO.finalize();
 //    xi.xmlResult.writeComment(L"dahjgdhgfga");
-    } else {
-      Document doc;
-      vector<u_char> buf;
-      buf.resize(docInfo.fileSize);
-      CCBuf ccBuf(buf);
-      ostream buffer(&ccBuf);
-      store->readFile(docInfo.fileName, buffer);
+  } else {
+    Document doc;
+    vector<u_char> buf;
+    buf.resize(docInfo.fileSize);
+    CCBuf ccBuf(buf);
+    ostream buffer(&ccBuf);
+    store->readFile(docInfo.fileName, buffer);
 
 //      buffer << file.rdbuf();
 //      file.close();
 
 //      doc.name(name());
-      doc.info.docId(docId());
-      map<TagId, string> tagNames;
-      for (auto i:result) {
-        auto &inf = doc.info.tags[mobs::MemBaseVector::nextpos];
-        auto tn = tagNames.find(i.tagId);
-        if (tn == tagNames.end())
-          tn = tagNames.emplace(i.tagId, store->tagName(i.tagId)).first;
-        inf.name(tagNames[i.tagId]);
-        inf.content(i.tagContent);
-      }
-      doc.type(docType);
-      if (allInfos()) {
-        doc.info.creationTime(docInfo.creation);
-        doc.info.creationInfo(docInfo.creationInfo);
-      }
-      doc.content(std::move(buf));
-      doc.traverse(xmlOut);
-    }
-  };
-
-};
-ObjRegister(GetDocument);
-
-class Dump : virtual public mobs::ObjectBase, virtual public MrpcObject
-{
-public:
-  ObjInit(Dump);
-
-
-  MemVar(int, id, KEYELEMENT1);
-
-  void execute(mobs::XmlOut &xmlOut, XmlInput &xi) override {
-    LOG(LM_INFO, "Dump DB");
-    auto store = Filestore::instance();
-    std::vector<DocId> result;
-    store->allDocs(result);
-    for (auto i:result) {
-      GetDocument gd;
-      gd.docId(i);
-      gd.allowAttach(true);
-      gd.allInfos(true);
-
-      xi.needEncryption();
-      gd.execute(xmlOut, xi);
-
-    }
-
-    //this->traverse(xmlOut);
-  }
-};
-ObjRegister(Dump);
-
-
-
-class SearchDocument : virtual public mobs::ObjectBase, virtual public MrpcObject {
-public:
-  ObjInit(SearchDocument);
-
-  MemVector(DocumentTags, tags);
-
-
-  void execute(mobs::XmlOut &xmlOut, XmlInput &xi) override {
-    TRACE("");
-    LOG(LM_INFO, "COMMAND " << to_string());
-
-    auto store = Filestore::instance();
-    list<TagInfo> tagInfos;
-    map<TagId, TagSearch> tagSearch;
-
+    doc.info.docId(obj.docId());
     map<TagId, string> tagNames;
-    for (auto i:tags) {
-      TagId id = store->findTag(i.name());
-      if (id) {
-        tagInfos.emplace_back(id, i.content());
-        tagNames[id] = i.name();
-        tagSearch[id].tagId = id;
-        auto c = i.content();
-        std::string o = "=";
-        if (c.empty())
-          o = "";
-        else if (c[0] == '*' or c[0] == '<' or c[0] == '>' or c[0] == '=') {
-          o = std::string() + c[0];
-          c.erase(0, 1);
-          if (not c.empty() and (o[0] == '<' and (c[0] == '>' or c[0] == '=') or
-                                 o[0] == '>' and c[0] == '=')) {
-            o += c[0];
-            c.erase(0, 1);
-          }
-        }
-        tagSearch[id].tagOpList.emplace(c, o);
-      }
-      else
-        LOG(LM_ERROR, "Tag " << i.name() << " does not exist");
+    for (auto i:result) {
+      auto &inf = doc.info.tags[mobs::MemBaseVector::nextpos];
+      auto tn = tagNames.find(i.tagId);
+      if (tn == tagNames.end())
+        tn = tagNames.emplace(i.tagId, store->tagName(i.tagId)).first;
+      inf.name(tagNames[i.tagId]);
+      inf.content(i.tagContent);
     }
-    list<SearchResult> result;
-    store->tagSearch(tagSearch, result);
-
-    SearchDocumentResult sr;
-    set<int> skip;
-    for (auto it = result.cbegin(); it != result.cend(); it++) {
-      if (skip.find(it->docId) != skip.end())
-        continue;
-      skip.insert(it->docId);
-      auto &r = sr.tags[mobs::MemBaseVector::nextpos];
-      r.docId(it->docId);
-      for (auto it2 = it; it2 != result.cend(); it2++) {
-        if (it2->docId == it->docId) {
-          auto &inf = r.tags[mobs::MemBaseVector::nextpos];
-          auto tn = tagNames.find(it2->tagId);
-          if (tn == tagNames.end())
-            tn = tagNames.emplace(it2->tagId, store->tagName(it2->tagId)).first;
-          inf.name(tagNames[it2->tagId]);
-          inf.content(it2->tagContent);
-        }
-      }
+    doc.type(docType);
+    if (obj.allInfos()) {
+      doc.info.creationTime(docInfo.creation);
+      doc.info.creationInfo(docInfo.creationInfo);
     }
-
-    LOG(LM_INFO, "Result: " << sr.to_string());
-    sr.traverse(xmlOut);
-
-  }
-
-};
-ObjRegister(SearchDocument);
-
-
-/// Speichern eines Dokumentes als Attachment
-class SaveDocument : virtual public mobs::ObjectBase, virtual public MrpcObject
-{
-public:
-  ObjInit(SaveDocument);
-
-  MemMobsEnumVar(DocumenType, type);
-  MemVar(std::string, name);
-  MemVar(int64_t, size);
-  MemVector(DocumentTags, tags);
-  MemVar(uint64_t, supersedeId);
-  MemVar(uint64_t, parentId);
-  MemVar(std::string, creationInfo);
-  MemVar(mobs::MTime, creationTime);
-
-
-  DocId dId{};
-
-  void execute(mobs::XmlOut &xmlOut, XmlInput &xi) override {
-    TRACE("");
-    xi.attachmentObj = this;
-
-    auto store = Filestore::instance();
-    DocInfo docInfo;
-    switch (type()) {
-      case DocumentJpeg: docInfo.docType = DocJpeg; break;
-      case DocumentTiff: docInfo.docType = DocTiff; break;
-      case DocumentText: docInfo.docType = DocText; break;
-      case DocumentPdf: docInfo.docType = DocPdf; break;
-      case DocumentHtml: docInfo.docType = DocHtml; break;
-      case DocumentUnknown: docInfo.docType = DocUnk; break;
-    }
-    docInfo.creationInfo = "ATTACHED";
-    docInfo.fileSize = size();
-//    docInfo.creation();
-    std::list<TagInfo> tagInfo;
-    store->insertTag(tagInfo, "name", name());
-    for (auto &t:tags)
-      store->insertTag(tagInfo, t.name(), t.content());
-    store->newDocument(docInfo, tagInfo);
-    dId = docInfo.id;
-  }
-
-  void executeAttachment(mobs::CryptBufAes &crypt, mobs::XmlOut &xmlOut, XmlInput &xi) override {
-    TRACE("");
-    LOG(LM_INFO, "Do attachment " << name() << " size=" << size() << " " << AES_BYTES(size()));
-    crypt.setReadLimit(AES_BYTES(size()));
-    crypt.hashAlgorithm("sha1");
-    istream istr(&crypt);
-
-    auto store = Filestore::instance();
-
-    DocInfo docInfo;
-    docInfo.id = dId;
-    docInfo.fileName = store->writeFile(istr, docInfo);
-    docInfo.checkSum = crypt.hashStr();
-    LOG(LM_INFO, "HASH " << crypt.hashStr());
-    store->documentCreated(docInfo);
-
-
-    LOG(LM_INFO, "Attachment saved");
-    CommandResult doc;
-    doc.docId(dId);
-    if (crypt.bad())
-      doc.msg("BAD");
-    else
-      doc.msg("OK");
-
+    doc.content(std::move(buf));
     doc.traverse(xmlOut);
+  }
+}
+
+
+
+void executeRequest(Dump &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
+  LOG(LM_INFO, "Dump DB");
+  auto store = Filestore::instance();
+  std::vector<DocId> result;
+  store->allDocs(result);
+  for (auto i:result) {
+    GetDocument gd;
+    gd.docId(i);
+    gd.allowAttach(true);
+    gd.allInfos(true);
+
+    xi.needEncryption();
+    ::executeRequest(gd, xmlOut, xi);
 
   }
 
-};
+  //this->traverse(xmlOut);
+}
+
+
+
+
+
+void executeRequest(SearchDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
+  TRACE("");
+  LOG(LM_INFO, "COMMAND " << obj.to_string());
+
+  auto store = Filestore::instance();
+  list<TagInfo> tagInfos;
+  map<TagId, TagSearch> tagSearch;
+
+  map<TagId, string> tagNames;
+  for (auto i:obj.tags) {
+    TagId id = store->findTag(i.name());
+    if (id) {
+      tagInfos.emplace_back(id, i.content());
+      tagNames[id] = i.name();
+      tagSearch[id].tagId = id;
+      auto c = i.content();
+      std::string o = "=";
+      if (c.empty())
+        o = "";
+      else if (c[0] == '*' or c[0] == '<' or c[0] == '>' or c[0] == '=') {
+        o = std::string() + c[0];
+        c.erase(0, 1);
+        if (not c.empty() and (o[0] == '<' and (c[0] == '>' or c[0] == '=') or
+                                               o[0] == '>' and c[0] == '=')) {
+          o += c[0];
+          c.erase(0, 1);
+        }
+      }
+      tagSearch[id].tagOpList.emplace(c, o);
+    }
+    else
+      LOG(LM_ERROR, "Tag " << i.name() << " does not exist");
+  }
+  list<SearchResult> result;
+  store->tagSearch(tagSearch, result);
+
+  SearchDocumentResult sr;
+  set<int> skip;
+  for (auto it = result.cbegin(); it != result.cend(); it++) {
+    if (skip.find(it->docId) != skip.end())
+      continue;
+    skip.insert(it->docId);
+    auto &r = sr.tags[mobs::MemBaseVector::nextpos];
+    r.docId(it->docId);
+    for (auto it2 = it; it2 != result.cend(); it2++) {
+      if (it2->docId == it->docId) {
+        auto &inf = r.tags[mobs::MemBaseVector::nextpos];
+        auto tn = tagNames.find(it2->tagId);
+        if (tn == tagNames.end())
+          tn = tagNames.emplace(it2->tagId, store->tagName(it2->tagId)).first;
+        inf.name(tagNames[it2->tagId]);
+        inf.content(it2->tagContent);
+      }
+    }
+  }
+
+  LOG(LM_INFO, "Result: " << sr.to_string());
+  sr.traverse(xmlOut);
+
+}
+
+
+
+//void executeAttachment(SaveDocument &obj, mobs::CryptBufAes &crypt, mobs::XmlOut &xmlOut, XmlInput &xi) {
+//  TRACE("");
+//  LOG(LM_INFO, "Do attachment " << obj.name() << " size=" << obj.size() << " " << AES_BYTES(obj.size()));
+//  crypt.setReadLimit(AES_BYTES(obj.size()));
+//  crypt.hashAlgorithm("sha1");
+//  istream istr(&crypt);
+//
+//  auto store = Filestore::instance();
+//
+//  DocInfo docInfo;
+//  docInfo.id = obj.dId;
+//  docInfo.fileName = store->writeFile(istr, docInfo);
+//  docInfo.checkSum = crypt.hashStr();
+//  LOG(LM_INFO, "HASH " << crypt.hashStr());
+//  store->documentCreated(docInfo);
+//
+//
+//  LOG(LM_INFO, "Attachment saved");
+//  CommandResult doc;
+//  doc.docId(obj.dId);
+//  if (crypt.bad())
+//    doc.msg("BAD");
+//  else
+//    doc.msg("OK");
+//
+//  doc.traverse(xmlOut);
+//
+//}
+
+void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
+  TRACE("");
+  auto store = Filestore::instance();
+  DocInfo docInfo;
+  switch (obj.type()) {
+    case DocumentJpeg: docInfo.docType = DocJpeg; break;
+    case DocumentTiff: docInfo.docType = DocTiff; break;
+    case DocumentText: docInfo.docType = DocText; break;
+    case DocumentPdf: docInfo.docType = DocPdf; break;
+    case DocumentHtml: docInfo.docType = DocHtml; break;
+    case DocumentUnknown: docInfo.docType = DocUnk; break;
+  }
+  docInfo.creationInfo = "ATTACHED";
+  docInfo.fileSize = obj.size();
+//    docInfo.creation();
+  std::list<TagInfo> tagInfo;
+  store->insertTag(tagInfo, "name", obj.name());
+  for (auto &t:obj.tags)
+    store->insertTag(tagInfo, t.name(), t.content());
+  store->newDocument(docInfo, tagInfo);
+
+  xi.attachmentInfo = docInfo;
+}
+
+void executeRequest(GetConfig &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
+  auto store = Filestore::instance();
+  ConfigResult co;
+  list<TemplateInfo> tinf;
+  store->loadTemplates(tinf);
+  for (auto t:tinf) {
+    co.templates[mobs::MemBaseVector::nextpos].doCopy(t);
+  }
+  LOG(LM_INFO, "Result: " << co.to_string());
+  co.traverse(xmlOut);
+}
+
+ObjRegister(Ping);
 ObjRegister(SaveDocument);
+ObjRegister(SearchDocument);
+ObjRegister(Dump);
+ObjRegister(GetDocument);
+ObjRegister(GetConfig);
+
+void ExecVisitor::visit(mobs::ObjectBase &obj) {
+  if (auto mrpc = dynamic_cast<GetDocument *>(&obj))
+    executeRequest(*mrpc, m_xmlOut, m_xi);
+  else if (auto mrpc = dynamic_cast<SearchDocument *>(&obj))
+    executeRequest(*mrpc, m_xmlOut, m_xi);
+  else if (auto mrpc = dynamic_cast<SaveDocument *>(&obj))
+    executeRequest(*mrpc, m_xmlOut, m_xi);
+  else if (auto mrpc = dynamic_cast<GetConfig *>(&obj))
+    executeRequest(*mrpc, m_xmlOut, m_xi);
+  else if (auto mrpc = dynamic_cast<Ping *>(&obj))
+    executeRequest(*mrpc, m_xmlOut, m_xi);
+  else if (auto mrpc = dynamic_cast<Dump *>(&obj))
+    executeRequest(*mrpc, m_xmlOut, m_xi);
+  else
+    THROW("no MRpc object");
+}
+
 
 
 #define TLOG(l, x) LOG(l, 'T' << id << ' ' << x)
@@ -702,8 +676,8 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
         xr.parse();
         TLOG(LM_INFO, "XIN bad=" << xstream.bad() << " eof=" << xstream.eof() << " read=" << xstream.tellg() << " eot="
                                  << xr.eot());
-        if (xr.attachmentObj) {
-          LOG(LM_INFO, "ATTACHMENT");
+        if (xr.attachmentInfo.fileSize) {
+          LOG(LM_INFO, "Do attachment " << xr.attachmentInfo.id << " size=" << xr.attachmentInfo.fileSize << " " << AES_BYTES(xr.attachmentInfo.fileSize));
           vector<u_char> iv;
           iv.resize(mobs::CryptBufAes::iv_size());
           mobs::CryptBufAes::getRand(iv);
@@ -719,10 +693,31 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
           cry.setIstr(xstream);
           mobs::ConvObjToString cth;
           mobs::XmlOut xo(&xf, cth);
-          xr.attachmentObj->executeAttachment(cry, xo, xr);
+
+          cry.setReadLimit(AES_BYTES(xr.attachmentInfo.fileSize));
+          cry.hashAlgorithm("sha1");
+          istream istr(&cry);
+
+          auto store = Filestore::instance();
+
+          xr.attachmentInfo.fileName = store->writeFile(istr, xr.attachmentInfo);
+          xr.attachmentInfo.checkSum = cry.hashStr();
+          LOG(LM_INFO, "HASH " << cry.hashStr());
+          store->documentCreated(xr.attachmentInfo);
+
+
+          LOG(LM_INFO, "Attachment saved");
+          CommandResult doc;
+          doc.docId(xr.attachmentInfo.id);
+          if (cry.bad())
+            doc.msg("BAD");
+          else
+            doc.msg("OK");
+
+          doc.traverse(xo);
+          xr.attachmentInfo.fileSize = 0;
+
 //          xstream.setf(std::ios::skipws);
-          delete xr.attachmentObj;
-          xr.attachmentObj = nullptr;
           LOG(LM_INFO, "endEncryption; finish=" << xr.finish);
           xr.endEncryption();
           auto *tp = dynamic_cast<mobs::TcpStBuf *>(xstream.rdbuf());
@@ -775,6 +770,7 @@ void usage() {
        << " -P Port default = '4444'\n"
        << " -b base dir default = 'DocSrvFiles'\n"
        << "    mongo uri eg. 'mongodb://localhost:27017'\n"
+       << " -c configfile lese Config aus Datei in DB und beende\n"
        << " -g generate key and exit\n";
 
   exit(1);
@@ -788,11 +784,12 @@ int main(int argc, char* argv[]) {
   string keystore = "keystore";
   string keyname = "server";
   string port = "4444";
+  string configfile;
   bool genkey = false;
 
   try {
     char ch;
-    while ((ch = getopt(argc, argv, "gp:n:P:b:")) != -1) {
+    while ((ch = getopt(argc, argv, "gp:n:P:b:c:")) != -1) {
       switch (ch) {
         case 'g':
           genkey = true;
@@ -811,6 +808,9 @@ int main(int argc, char* argv[]) {
           break;
         case 'b':
           base = optarg;
+          break;
+       case 'c':
+         configfile = optarg;
           break;
         case '?':
         default:
@@ -837,6 +837,10 @@ int main(int argc, char* argv[]) {
     k.close();
 
     Filestore::instance(base);
+    if (not configfile.empty()) {
+      Filestore::instance()->loadTemplatesFromFile(configfile);
+      return 0;
+    }
     srv.server();
 
 

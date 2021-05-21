@@ -1,0 +1,106 @@
+{
+  "templates": [
+    {
+      "type": "R",
+      "name": "Doc.search",
+      "pool": "doc",
+      "maskText": "Suche Dokument",
+      "tags": [
+        {
+          "type": "string",
+          "name": "Name",
+          "maskText": "Name",
+          "regex": "",
+          "format": "",
+          "enums": [],
+          "hide": false,
+          "maxSize": 0
+        },
+        {
+          "type": "string",
+          "name": "Ablage",
+          "maskText": "Ablage",
+          "regex": "",
+          "format": "",
+          "enums": [],
+          "hide": false,
+          "maxSize": 0
+        },
+        {
+          "type": "string",
+          "name": "Schlagwort",
+          "maskText": "Schlagwort",
+          "regex": "",
+          "format": "",
+          "enums": [],
+          "hide": false,
+          "maxSize": 0
+        },
+        {
+          "type": "enum",
+          "name": "Status",
+          "maskText": "Status",
+          "regex": "",
+          "format": "",
+          "enums": [
+            "verkauft"
+          ],
+          "hide": false,
+          "maxSize": 0
+        }
+      ],
+      "fixTags": null
+    },
+    {
+      "type": "C",
+      "name": "Doc.New",
+      "pool": "doc",
+      "maskText": "Neues Dokument",
+      "tags": [
+        {
+          "type": "string",
+          "name": "Name",
+          "maskText": "Name",
+          "regex": "",
+          "format": "",
+          "enums": [],
+          "hide": false,
+          "maxSize": 0
+        },
+        {
+          "type": "string",
+          "name": "Ablage",
+          "maskText": "Ablage",
+          "regex": "",
+          "format": "",
+          "enums": [],
+          "hide": false,
+          "maxSize": 0
+        },
+        {
+          "type": "string",
+          "name": "Schlagwort",
+          "maskText": "Schlagwort",
+          "regex": "",
+          "format": "",
+          "enums": [],
+          "hide": false,
+          "maxSize": 0
+        },
+        {
+          "type": "enum",
+          "name": "Status",
+          "maskText": "Status",
+          "regex": "",
+          "format": "",
+          "enums": [
+            "verkauft"
+          ],
+          "hide": false,
+          "maxSize": 0
+        }
+      ],
+      "fixTags": null
+    }
+  ]
+}

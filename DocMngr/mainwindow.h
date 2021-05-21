@@ -23,12 +23,15 @@
 #include <QMainWindow>
 #include <QElapsedTimer>
 #include <QtNetwork/QTcpSocket>
+#include <mrpc.h>
 
 #include "mrpccli.h"
 
 namespace Ui {
 class MainWindow;
 }
+
+class ActionTemplate;
 
 class MainWindow : public QMainWindow
 {
@@ -39,6 +42,7 @@ public:
   ~MainWindow();
 
   void loadDocument(int64_t doc);
+  void initTags(int templateId);
 
 public slots:
   void load();
@@ -47,12 +51,15 @@ public slots:
   void getDocument();
   void searchDocument();
   void searchRowClicked(int row, int col);
+  void getConfiguration();
 
 private:
-    Ui::MainWindow *ui;
-    MrpcClient *mrpc = nullptr;
-    int cnt = 0;
-    QElapsedTimer elapsed;
+  Ui::MainWindow *ui;
+  MrpcClient *mrpc = nullptr;
+  QString currentFile;
+  std::map<int, ActionTemplate> actionTemplates;
+
+  void initTags(const TemplateInfo &templateInfo);
 };
 
 #endif // MAINWINDOW_H

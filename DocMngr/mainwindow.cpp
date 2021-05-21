@@ -26,6 +26,7 @@
 #include "mobs/xmlwriter.h"
 #include "mobs/xmlout.h"
 #include "mobs/mchrono.h"
+#include "mobs/converter.h"
 #include "mobs/csb.h"
 #include "mobs/aes.h"
 #include "mobs/rsa.h"
@@ -36,6 +37,15 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QFileDialog>
+#include <QRadioButton>
+#include <QCheckBox>
+#include <QFormLayout>
+#include <QButtonGroup>
+#include <QDateTimeEdit>
+#include <QLineEdit>
+#include <QLabel>
+#include <set>
+#include <fstream>
 
 #include "mrpccli.h"
 #include "viewer.h"
@@ -49,7 +59,7 @@
 ////  mobs::CryptIstrBuf streambufO;
 //};
 
-inline std::basic_ios<char> &operator<<(std::basic_ios<char> &s, QString q) {
+inline std::basic_ios<char> &operator<<(std::basic_ios<char> &s, const QString &q) {
   s << q.toUtf8().data();
   return s;
 }
@@ -63,48 +73,8 @@ ObjRegister(SessionResult);
 ObjRegister(Document);
 ObjRegister(DocumentRaw);
 ObjRegister(SearchDocumentResult);
+ObjRegister(ConfigResult);
 
-
-class GetDocument : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(GetDocument);
-
-  MemVar(uint64_t, docId);
-  MemVar(std::string, type);
-  MemVar(bool, allowAttach);
-  MemVar(bool, allInfos);
-
-
-};
-
-class SearchDocument : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(SearchDocument);
-
-  MemVector(DocumentTags, tags);
-
-};
-
-
-class SaveDocument : virtual public mobs::ObjectBase
-{
-public:
-  ObjInit(SaveDocument);
-
-  MemMobsEnumVar(DocumenType, type);
-  MemVar(std::string, name);  /// obsolet
-  MemVar(int64_t, size);
-  MemVector(DocumentTags, tags);
-  MemVar(uint64_t, supersedeId);  /// ersetzt Objekt
-  MemVar(uint64_t, parentId);     /// Abgeleitetes Objekt
-  MemVar(std::string, creationInfo); /// Art der Erzeugung/Ableitung/Ersetzung
-  MemVar(mobs::MTime, creationTime); /// Zeitpunkt der Erzeugung, wenn ungleich Eintragezeitpunkt
-
-  // TODO kleine Objekte embedded senden
-
-};
 
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -112,18 +82,8 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
   ui->setupUi(this);
-  ui->lineEditCnt->setText(QString::number(cnt));
   logging::currentLevel = LM_INFO;
   LOG(LM_INFO, "start");
-
-  QStringList initialItems;
-  initialItems << "" << tr("Name") << tr("Ablage") << tr("Schlagwort");
-
-  ui->comboBoxTag1->addItems(initialItems);
-  ui->comboBoxTag2->addItems(initialItems);
-  ui->comboBoxTag3->addItems(initialItems);
-  ui->comboBoxTag4->addItems(initialItems);
-  ui->comboBoxTag5->addItems(initialItems);
 
 
   ui->pushButtonSave->setEnabled(false);
@@ -131,6 +91,9 @@ MainWindow::MainWindow(QWidget *parent) :
 //  ui->widget->showPdfFile(QString("../fritz.pdf"));
 //  ui->widget->showPdfFile("../Stunden.pdf");
 
+  QTimer::singleShot(1, this, SLOT(getConfiguration()));
+
+//  initTags(1);
 }
 
 MainWindow::~MainWindow()
@@ -138,101 +101,386 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-void MainWindow::load() {
-#if 0
+
+class SearchTag {
+public:
+  bool evaluate(mobs::MemberVector<DocumentTags> &tags, bool search);
+
+  QString maskName;
+  mobs::StringFormatter formatter{};
+  bool useFormatter = false;
+  bool isMaster = false;
+  std::vector<std::string> tags; // bzgl. formatter
+  std::vector<std::string> content; // bzgl. ButtonGroup
+  QLineEdit *l1 = nullptr;
+  QLineEdit *l2 = nullptr;
+  QDateEdit *d1 = nullptr;
+  QDateEdit *d2 = nullptr;
+  QCheckBox *c1 = nullptr;
+  QButtonGroup *bg = nullptr;
+};
+
+class ActionTemplate {
+public:
+  std::string pool;
+  std::list<SearchTag *> searchTags;
+  std::set<std::string> extraTags;  // zusätzliche gefundene Tags
+
+  void foundTag(const std::string &tag);
+  void clear();
+  bool setTag(const std::string &tag, const std::string &content);
+
+  QFormLayout *layout = nullptr;
+
+};
+
+void ActionTemplate::foundTag(const std::string &tag) {
+  if (extraTags.find(tag) != extraTags.end())
+    return;
+  QWidget *parent = searchTags.front()->l1; // TODO
+  for (auto s:searchTags) {
+    if (std::find(s->tags.begin(), s->tags.end(), tag) != s->tags.end())
+      return;
+  }
+  LOG(LM_INFO, "Found unknown Tag " << tag);
+  if (extraTags.empty()) {
+  }
+  extraTags.emplace(tag);
+  auto sTag = new SearchTag;
+  searchTags.emplace_back(sTag);
+  sTag->maskName = QString::fromUtf8(tag.c_str());
+  sTag->tags.emplace_back(tag);
+  sTag->l1 = new QLineEdit(parent);
+  layout->addRow(sTag->maskName, sTag->l1);
+}
+
+bool ActionTemplate::setTag(const std::string &tag, const std::string &content) {
+  for (auto s:searchTags)
+    if (std::find(s->tags.begin(), s->tags.end(), tag) != s->tags.end()) {
+      if (s->l1) {
+        s->l1->setText(QString::fromUtf8(content.c_str()));
+        return true;
+      }
+      // TODO
+    };
+  return false;
+}
+
+void ActionTemplate::clear() {
+  for (auto s:searchTags) {
+    if (s->l1)
+      s->l1->clear();
+    if (s->c1)
+      s->c1->setChecked(false);
+    if (s->bg and s->bg->button(-1))
+      s->bg->button(-1)->setChecked(true);
+  }
+}
+
+
+bool SearchTag::evaluate(mobs::MemberVector<DocumentTags> &tList, bool search) {
   try {
-    LOG(LM_INFO, "load");
-    ui->widget->clearViewer();
-    ui->lineEdit1->clear();
-    ui->lineEdit2->clear();
-
-    elapsed.start();
-
-    mrpc = new MrpcClient(this);
-    mrpc->waitReady(5);
-    LOG(LM_INFO, "MAIN connected");
-
-#if 0
-    Gespann f1;
-    f1.id(1);
-    f1.typ("Brauereigespann");
-    f1.zugmaschiene.typ("Sechsspänner");
-    f1.zugmaschiene.achsen(0);
-    f1.zugmaschiene.antrieb(true);
-    f1.haenger[0].typ("Bräuwagen");
-    f1.haenger[0].achsen(2);
-    mrpc->send(&f1);
-#else
-    GetDocument_2 gd;
-    gd.name("Auto.jpg");
-//    mrpc->send(&gd);
-#endif
-    LOG(LM_INFO, "MAIN sent");
-    ui->lineEdit1->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
-
-    mobs::ObjectBase *obj = mrpc->sendAndWaitObj(&gd, 10);
-//    mobs::ObjectBase *obj = mrpc->execNextObj(10);
-    ui->lineEdit2->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
-
-    LOG(LM_INFO, "MAIN received");
-
-    if (obj) {
-      ui->lineEditCnt->setText(QString::number(++cnt));
-      LOG(LM_INFO, "RESULT ");
-      if (auto pic = dynamic_cast<Document *>(obj)) {
-        QPixmap pixmap;
-        pixmap.loadFromData(&pic->content()[0], pic->content().size());
-      } else if (auto pic = dynamic_cast<DocumentRaw *>(obj)) {
-        QPixmap pixmap;
-        LOG(LM_INFO, "READ " << pic->size() << " type " << pic->type.toStr(mobs::ConvToStrHint(false)));
-        u_char *p = mrpc->getAttachment(pic->size(), 95);
-        ui->lineEdit2->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
-
-        pixmap.loadFromData(p, pic->size());
-        ui->widget->showPicture(pixmap);
-      } else
-        LOG(LM_INFO, "RESULT unused " << obj->to_string());
+    LOG(LM_INFO, "evaluate " << maskName.toUtf8().data());
+    if (tags.empty())
+      return true;
+    if (bg) {
+      int pos = bg->checkedId();
+      if (pos >= 0 and pos < content.size()) {
+        LOG(LM_INFO, "SEARCH " << tags.front() << " " << content[size_t(pos)]);
+        auto &dt = tList[mobs::MemBaseVector::nextpos];
+        dt.name(tags.front());
+        dt.content(content[size_t(pos)]);
+      }
+    } else if (d1) {
+      if (c1 and not c1->isChecked())
+        return true;
+      std::string von = d1->date().toString(Qt::ISODate).toStdString();
+      std::string bis;
+      if (d2)
+        bis = d2->date().toString(Qt::ISODate).toStdString();
+      if (von.empty())
+        von.swap(bis);
+      if (von.empty())
+        return true;
+      if (bis.empty() or von == bis or not search) {
+        LOG(LM_INFO, "SEARCH " << tags.front() << " " << von);
+        auto &dt = tList[mobs::MemBaseVector::nextpos];
+        dt.name(tags.front());
+        dt.content(von);
+      } else {
+        LOG(LM_INFO, "SEARCH " << tags.front() << " >=" << von);
+        LOG(LM_INFO, "SEARCH " << tags.front() << " <=" << bis);
+        auto &dt1 = tList[mobs::MemBaseVector::nextpos];
+        dt1.name(tags.front());
+        dt1.content(std::string(">=") + von);
+        auto &dt2 = tList[mobs::MemBaseVector::nextpos];
+        dt2.name(tags.front());
+        dt2.content(std::string("<=") + bis);
+      }
+    } else if (c1) {
+      if (c1->isChecked()) {
+        LOG(LM_INFO, "SEARCH " << tags.front());
+        auto &dt = tList[mobs::MemBaseVector::nextpos];
+        dt.name(tags.front());
+      }
+    } else if (l1) {
+      if (useFormatter) {
+        std::wstring c = l1->text().toStdWString();
+        if (c.empty())
+          return true;
+        std::wstring res;
+        int pos = formatter.format(c, res);
+        if (pos <= 0 or pos >= tags.size()) {
+          l1->setFocus();
+          l1->selectAll();
+          return false;
+        }
+        LOG(LM_INFO, "SEARCH " << tags[size_t(pos)] << " " << mobs::to_string(res));
+        auto &dt = tList[mobs::MemBaseVector::nextpos];
+        dt.name(tags[size_t(pos)]);
+        dt.content(mobs::to_string(res));
+      } else {
+        std::string c = l1->text().toUtf8().data();
+        if (c.empty())
+          return true;
+        LOG(LM_INFO, "SEARCH " << tags.front() << " " << c);
+        auto &dt = tList[mobs::MemBaseVector::nextpos];
+        dt.name(tags.front());
+        dt.content(c);
+      }
     }
-    mrpc->waitDone();
-    LOG(LM_INFO, "MAIN ready");
-
-    mrpc->close();
   } catch (std::exception &e) {
-    LOG(LM_ERROR, "Exception in load " << e.what());
-    QMessageBox::information(this, windowTitle(), QString::fromUtf8(e.what()));
+    LOG(LM_ERROR, "exception in evaluate " << e.what());
+    if (l1) {
+      l1->setFocus();
+      l1->selectAll();
+    }
+    return false;
+  }
+  return true;
+}
+
+void MainWindow::initTags(int templateId) {
+  TemplateInfo ti2;
+  ti2.name("Doc");
+  ti2.pool("doc");
+  ti2.maskText("Suche Dokument");
+  {
+    auto &tag = ti2.tags[mobs::MemBaseVector::nextpos];
+    tag.type(TagString);
+    tag.name("Name");
+    tag.maskText("Name");
+  }
+  {
+   auto &tag = ti2.tags[mobs::MemBaseVector::nextpos];
+    tag.type(TagString);
+    tag.name("Ablage");
+    tag.maskText("Ablage");
+ }
+ {
+   auto &tag = ti2.tags[mobs::MemBaseVector::nextpos];
+    tag.type(TagString);
+    tag.name("Schlagwort");
+    tag.maskText("Schlagwort");
+  }
+  {
+   auto &tag = ti2.tags[mobs::MemBaseVector::nextpos];
+    tag.type(TagEnumeration);
+    tag.name("Status");
+    tag.maskText("Status");
+   tag.enums[mobs::MemBaseVector::nextpos]("verkauft");
+ }
+
+  const TemplateInfo &templateInfo = templateId > 1 ? ti2 : ti2;
+
+  std::cout << templateInfo.to_string() << std::endl;
+  initTags(templateInfo);
+}
+
+void MainWindow::initTags(const TemplateInfo &templateInfo) {
+  int count = 0;
+  QWidget *parent = ui->tabWidgetTagsPage1; // ui->groupBoxTags;
+  if (not actionTemplates.empty()) {
+    parent = new QWidget(ui->tabWidgetTags);
+    count = ui->tabWidgetTags->addTab(parent, "");
+  }
+  LOG(LM_INFO, "TAB " << count);
+  auto &currentTemplate = actionTemplates[count];
+  currentTemplate.extraTags.emplace("OriginalFileName");  // TODO
+  currentTemplate.pool = templateInfo.pool();
+
+  ui->tabWidgetTags->setTabText(count, QString::fromUtf8(templateInfo.maskText().c_str()));
+
+//  ui->groupBoxTags->setTitle(QString::fromUtf8(ti.maskText().c_str()));
+//  if (ui->groupBoxTags->layout())
+//    ui->groupBoxTags->layout()->deleteLater();
+  currentTemplate.layout = new QFormLayout(parent);
+  if (templateInfo.type() == TemplateCreate) {
+    auto layout1 = new QGridLayout(parent);
+    auto sTag = new SearchTag;
+    sTag->maskName = tr("File");
+    sTag->tags.push_back("OriginalFileName");
+    sTag->l1 = new QLineEdit(parent);
+    sTag->l1->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto but = new QPushButton(tr("open"), parent);
+    connect(but, SIGNAL(pressed()), this, SLOT(loadFile()));
+    layout1->addWidget(but, 0, 0);
+    layout1->addWidget(sTag->l1, 0, 1);
+    currentTemplate.layout->addRow(sTag->maskName, layout1);
+    currentTemplate.searchTags.emplace_back(sTag);
+  }
+  for (auto &t:templateInfo.tags) {
+    LOG(LM_INFO, "TAG " << t.type.toStr(mobs::ConvToStrHint(false)) << " " << t.maskText());
+    QString n = QString::fromUtf8(t.maskText().c_str());
+    SearchTag *sTag = nullptr;
+    if (t.type() == TagIdent and not t.regex().empty()) {
+      for (auto s:currentTemplate.searchTags) {
+        if (s->maskName == n and s->useFormatter) {
+          sTag = s;
+          break;
+        }
+      }
+    }
+    if (not sTag) {
+      sTag = new SearchTag;
+      sTag->maskName = n;
+      currentTemplate.searchTags.emplace_back(sTag);
+    } else {
+      size_t i = sTag->formatter.insertPattern(mobs::to_wstring(t.regex()), mobs::to_wstring(t.format()));
+      if (i > 0) {
+        sTag->tags.resize(i + 1);
+        sTag->tags[i] = t.name();
+        continue;
+      }
+    }
+
+    switch (t.type()) {
+      case TagIdent:
+        sTag->isMaster = true;
+      case TagString: {
+        if (not t.regex().empty()) {
+          size_t i = sTag->formatter.insertPattern(mobs::to_wstring(t.regex()), mobs::to_wstring(t.format()));
+          if (i > 0) {
+            sTag->tags.resize(i + 1);
+            sTag->tags[i] = t.name();
+            sTag->useFormatter = true;
+          }
+        } else
+          sTag->tags.emplace_back(t.name());
+        sTag->l1 = new QLineEdit(parent);
+
+        currentTemplate.layout->addRow(n, sTag->l1);
+        if (not sTag->isMaster and templateInfo.type() == TemplateSearch) {
+          for (auto s:currentTemplate.searchTags) {
+            if (s->isMaster)
+              connect(s->l1, &QLineEdit::textChanged,
+                      [s, sTag] { if (not s->l1->text().isEmpty()) sTag->l1->clear(); });
+          }
+        }
+        break;
+      }
+      case TagDate: {
+        sTag->tags.emplace_back(t.name());
+        auto layout1 = new QGridLayout(parent);
+        sTag->d1 = new QDateEdit(parent);
+        sTag->d1->setCalendarPopup(true);
+        sTag->d1->setMinimumDate(QDate::currentDate().addYears(-40));
+        sTag->d1->setMaximumDate(QDate::currentDate().addYears(+20));
+        sTag->d1->setDate(QDate::currentDate());
+        layout1->addWidget(sTag->d1, 0, 1);
+        if (templateInfo.type() == TemplateSearch) {
+          layout1->addWidget(new QLabel("-", sTag->d1), 0, 2);
+          sTag->d2 = new QDateEdit(parent);
+          sTag->d2->setCalendarPopup(true);
+          sTag->d2->setMinimumDate(QDate::currentDate().addYears(-40));
+          sTag->d2->setMaximumDate(QDate::currentDate().addYears(+20));
+          sTag->d2->setDate(QDate::currentDate());
+          layout1->addWidget(sTag->d2, 0, 3);
+        }
+        sTag->c1 = new QCheckBox(sTag->d1);
+        sTag->c1->setChecked(true);
+        connect(sTag->c1, &QCheckBox::stateChanged, [this, sTag] {
+          sTag->d1->setEnabled(sTag->c1->isChecked());
+          if (sTag->d2) sTag->d2->setEnabled(sTag->c1->isChecked());
+        });
+//        sTag->l1 = new QLineEdit(parent);
+//        sTag->l2 = new QLineEdit(parent);
+        layout1->addWidget(sTag->c1, 0, 0);
+        layout1->setAlignment(sTag->c1, Qt::AlignVCenter);
+        currentTemplate.layout->addRow(n, layout1);
+        currentTemplate.layout->setAlignment(Qt::AlignVCenter);
+        if (templateInfo.type() == TemplateSearch) {
+          for (auto s:currentTemplate.searchTags) {
+            if (s->isMaster)
+              connect(s->l1, &QLineEdit::textChanged, [s, sTag] { sTag->c1->setChecked(s->l1->text().isEmpty()); });
+          }
+        }
+        break;
+      }
+      case TagEnumeration:
+        sTag->tags.emplace_back(t.name());
+        if (t.enums.size() == 0) {
+          sTag->c1 = new QCheckBox(parent);
+          currentTemplate.layout->addRow(n, sTag->c1);
+          for (auto s:currentTemplate.searchTags) {
+            if (s->isMaster)
+              connect(s->l1, &QLineEdit::textChanged,
+                      [s, sTag] { if (not s->l1->text().isEmpty()) sTag->c1->setChecked(false); });
+          }
+        } else {
+          auto layout1 = new QGridLayout(parent);
+          sTag->bg = new QButtonGroup(parent);
+          int c = 0;
+          for (auto &e:t.enums) {
+            auto b = new QRadioButton(QString::fromUtf8(e().c_str()), parent);
+            sTag->bg->addButton(b, c);
+            sTag->content.emplace_back(e());
+            layout1->addWidget(b, 0, c++);
+          }
+          auto b = new QRadioButton(templateInfo.type() == TemplateSearch ? tr("alle") : tr("--"), parent);
+          sTag->bg->addButton(b, -1);
+          b->setChecked(true);
+          layout1->addWidget(b, 0, c);
+          currentTemplate.layout->addRow(n, layout1);
+        }
+        break;
+    }
+
 
   }
-  mrpc = nullptr;
-#endif
+
+
+}
+
+void MainWindow::load() {
+
 }
 
 void MainWindow::save() {
   try {
     LOG(LM_INFO, "save");
+    auto i = actionTemplates.find(ui->tabWidgetTags->currentIndex());
+    if (i == actionTemplates.end())
+      return;
+    auto &currentTemplate = i->second;
 
-    QString n = ui->lineEditName->text();
-    QFile *file = new QFile(n);
+    QFile *file = new QFile(currentFile);
     if (not file)
       return;
-    elapsed.start();
-
-    mrpc = new MrpcClient(this);
-    mrpc->waitReady(5);
-    LOG(LM_INFO, "MAIN connected save " << file->size());
 
     SaveDocument doc;
-    int pos = n.lastIndexOf('/');
-    doc.name(n.midRef(pos+1).toUtf8().data());
+    int pos = currentFile.lastIndexOf('/');
+    doc.name(currentFile.midRef(pos+1).toUtf8().data());
     doc.size(file->size());
-    if (n.endsWith(".pdf", Qt::CaseSensitivity::CaseInsensitive))
+    if (currentFile.endsWith(".pdf", Qt::CaseSensitivity::CaseInsensitive))
       doc.type(DocumenType::DocumentPdf);
-    else if (n.endsWith(".jpg", Qt::CaseSensitivity::CaseInsensitive))
+    else if (currentFile.endsWith(".jpg", Qt::CaseSensitivity::CaseInsensitive))
       doc.type(DocumenType::DocumentJpeg);
-    else if (n.endsWith(".jpeg", Qt::CaseSensitivity::CaseInsensitive))
+    else if (currentFile.endsWith(".jpeg", Qt::CaseSensitivity::CaseInsensitive))
       doc.type(DocumenType::DocumentJpeg);
-    else if (n.endsWith(".tif", Qt::CaseSensitivity::CaseInsensitive))
+    else if (currentFile.endsWith(".tif", Qt::CaseSensitivity::CaseInsensitive))
       doc.type(DocumenType::DocumentTiff);
-    else if (n.endsWith(".tiff", Qt::CaseSensitivity::CaseInsensitive))
+    else if (currentFile.endsWith(".tiff", Qt::CaseSensitivity::CaseInsensitive))
       doc.type(DocumenType::DocumentTiff);
     auto ft = file->fileTime(QFileDevice::FileModificationTime);
     if (ft.isValid()) {
@@ -240,56 +488,25 @@ void MainWindow::save() {
       tp += std::chrono::milliseconds(ft.currentMSecsSinceEpoch());
       doc.creationTime(std::chrono::time_point_cast<std::chrono::microseconds>(tp));
     }
-    std::string tag, val;
-    tag = ui->comboBoxTag1->currentText().toUtf8().data();
-    val = ui->lineEditSearch1->text().toUtf8().data();
-    if (not tag.empty()) {
-      auto &t1 = doc.tags[mobs::MemBaseVector::nextpos];
-      t1.name(tag);
-      t1.content(val);
-    }
-    tag = ui->comboBoxTag2->currentText().toUtf8().data();
-    val = ui->lineEditSearch2->text().toUtf8().data();
-    if (not tag.empty()) {
-      auto &t1 = doc.tags[mobs::MemBaseVector::nextpos];
-      t1.name(tag);
-      t1.content(val);
-    }
-    tag = ui->comboBoxTag3->currentText().toUtf8().data();
-    val = ui->lineEditSearch3->text().toUtf8().data();
-    if (not tag.empty()) {
-      auto &t1 = doc.tags[mobs::MemBaseVector::nextpos];
-      t1.name(tag);
-      t1.content(val);
-    }
-    tag = ui->comboBoxTag4->currentText().toUtf8().data();
-    val = ui->lineEditSearch4->text().toUtf8().data();
-    if (not tag.empty()) {
-      auto &t1 = doc.tags[mobs::MemBaseVector::nextpos];
-      t1.name(tag);
-      t1.content(val);
-    }
-    tag = ui->comboBoxTag5->currentText().toUtf8().data();
-    val = ui->lineEditSearch5->text().toUtf8().data();
-    if (not tag.empty()) {
-      auto &t1 = doc.tags[mobs::MemBaseVector::nextpos];
-      t1.name(tag);
-      t1.content(val);
-    }
-    auto &t2 = doc.tags[mobs::MemBaseVector::nextpos];
-    t2.name("OriginalFileName");
-    t2.content(n.toUtf8().data());
+
+    for (auto s:currentTemplate.searchTags)
+      if (not s->evaluate(doc.tags, false))
+        return;
+
+    mrpc = new MrpcClient(this);
+    mrpc->waitReady(5);
+    LOG(LM_INFO, "MAIN connected save " << file->size());
 
     mrpc->send(&doc);
 
     mrpc->attachment(file);
 
     LOG(LM_INFO, "MAIN sent");
-    ui->lineEdit1->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
+    int t1 = mrpc->elapsed.nsecsElapsed() / 1000000;
 
     mobs::ObjectBase *obj = mrpc->execNextObj(90);
 //    mobs::ObjectBase *obj = mrpc->execNextObj(10);
-    ui->lineEdit2->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
+    int t2 = mrpc->elapsed.nsecsElapsed() / 1000000;
 
     LOG(LM_INFO, "MAIN command send");
 
@@ -313,6 +530,8 @@ void MainWindow::save() {
     ui->pushButtonSave->setEnabled(false);
 
     mrpc->close();
+    ui->statusbar->showMessage(tr("%1 %2").arg(t1).arg(t2), 10000);
+
     QMessageBox::information(this, windowTitle(), QString::fromUtf8(result.c_str()));
 
   } catch (std::exception &e) {
@@ -326,7 +545,6 @@ void MainWindow::save() {
 }
 
 void MainWindow::loadFile() {
-  ui->pushButtonSave->setEnabled(false);
   QString filter;
   QString file = QFileDialog::getOpenFileName(this, tr("Open File"), "", tr("PDF (*.pdf);;Images (*.png *.xpm *.jpg *.tif)"), &filter);
   if (not file.isEmpty()) {
@@ -340,82 +558,94 @@ void MainWindow::loadFile() {
         return;
       ui->widget->showPicture(pixmap);
     }
-    ui->lineEditName->setText(file);
-    int pos = file.lastIndexOf('/');
-    ui->comboBoxTag1->setCurrentText(tr("Name"));
-    ui->comboBoxTag2->setCurrentText(tr("Ablage"));
-    ui->comboBoxTag3->setCurrentText(tr("Schlagwort"));
-    ui->lineEditSearch1->setText(file.midRef(pos+1).toUtf8().data());
-    ui->lineEditSearch2->clear();
-    ui->lineEditSearch3->clear();
-
+    currentFile = file;
     ui->pushButtonSave->setEnabled(true);
+    auto i = actionTemplates.find(ui->tabWidgetTags->currentIndex());
+    if (i != actionTemplates.end()) {
+      auto &currentTemplate = i->second;
+      int pos = file.lastIndexOf('/');
+      currentTemplate.clear();
+      if (i->second.pool == "doc")
+        currentTemplate.setTag("Name", file.midRef(pos + 1).toUtf8().data());
+      currentTemplate.setTag("OriginalFileName", file.toUtf8().data());
+    }
+
   }
 
 }
 
+void MainWindow::getConfiguration() {
+  try {
+
+    mrpc = new MrpcClient(this);
+    mrpc->waitReady(5);
+    LOG(LM_INFO, "MAIN connected");
+
+    GetConfig gc;
+    gc.start(true);
+
+    LOG(LM_INFO, "MAIN sent");
+    int t1 = mrpc->elapsed.nsecsElapsed() / 1000000;
+
+    mobs::ObjectBase *obj = mrpc->sendAndWaitObj(&gc, 10);
+    mrpc->waitDone();
+
+    int t2 = mrpc->elapsed.nsecsElapsed() / 1000000;
+    ui->statusbar->showMessage(tr("ms: %1 %2").arg(t1).arg(t2), 10000);
+
+    mrpc->close();
+    LOG(LM_INFO, "MAIN received " << obj->to_string());
+    std::ofstream oo("conf.json");
+    oo << obj->to_string(mobs::ConvObjToString().exportJson().doIndent());
+    oo.close();
+    if (auto c = dynamic_cast<ConfigResult *>(obj)) {
+      for (auto &i:c->templates)
+        initTags(i);
+    } else
+      THROW("invalid result type");
+
+  } catch (std::exception &e) {
+    LOG(LM_ERROR, "Exception in getConfig " << e.what());
+    QMessageBox::information(this, windowTitle(), QString::fromUtf8(e.what()));
+
+  }
+  mrpc = nullptr;
+}
+
 void MainWindow::searchDocument() {
-  std::string s1 = ui->lineEditSearch1->text().toUtf8().data();
-  std::string s2 = ui->lineEditSearch2->text().toUtf8().data();
-  std::string s3 = ui->lineEditSearch3->text().toUtf8().data();
-  std::string s4 = ui->lineEditSearch4->text().toUtf8().data();
-  std::string s5 = ui->lineEditSearch5->text().toUtf8().data();
-  std::string t1 = ui->comboBoxTag1->currentText().toUtf8().data();
-  std::string t2 = ui->comboBoxTag2->currentText().toUtf8().data();
-  std::string t3 = ui->comboBoxTag3->currentText().toUtf8().data();
-  std::string t4 = ui->comboBoxTag4->currentText().toUtf8().data();
-  std::string t5 = ui->comboBoxTag5->currentText().toUtf8().data();
+  auto i = actionTemplates.find(ui->tabWidgetTags->currentIndex());
+  if (i == actionTemplates.end())
+    return;
+  auto &currentTemplate = i->second;
+
   ui->tableWidget->clear();
   ui->tableWidget->setColumnCount(1);
   ui->tableWidget->setRowCount(0);
   ui->tableWidget->hideColumn(0);
 
   try {
-    elapsed.start();
 
     mrpc = new MrpcClient(this);
     mrpc->waitReady(5);
     LOG(LM_INFO, "MAIN connected");
 
     SearchDocument sd;
-    if (not t1.empty()) {
-      auto &dt = sd.tags[mobs::MemBaseVector::nextpos];
-      dt.name(t1);
-      dt.content(s1);
-    }
-    if (not t2.empty()) {
-      auto &dt = sd.tags[mobs::MemBaseVector::nextpos];
-      dt.name(t2);
-      dt.content(s2);
-    }
-    if (not t3.empty()) {
-      auto &dt = sd.tags[mobs::MemBaseVector::nextpos];
-      dt.name(t3);
-      dt.content(s3);
-    }
-    if (not t4.empty()) {
-      auto &dt = sd.tags[mobs::MemBaseVector::nextpos];
-      dt.name(t4);
-      dt.content(s4);
-    }
-    if (not t5.empty()) {
-      auto &dt = sd.tags[mobs::MemBaseVector::nextpos];
-      dt.name(t5);
-      dt.content(s5);
-    }
+    for (auto s:currentTemplate.searchTags)
+      if (not s->evaluate(sd.tags, true))
+        return;
 
     LOG(LM_INFO, "MAIN sent");
-    ui->lineEdit1->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
+    int t1 = mrpc->elapsed.nsecsElapsed() / 1000000;
 
     mobs::ObjectBase *obj = mrpc->sendAndWaitObj(&sd, 10);
 //    mobs::ObjectBase *obj = mrpc->execNextObj(10);
-    ui->lineEdit2->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
+    int t2 = mrpc->elapsed.nsecsElapsed() / 1000000;
+    ui->statusbar->showMessage(tr("ms: %1 %2").arg(t1).arg(t2), 10000);
 
     LOG(LM_INFO, "MAIN received");
 
     std::map<std::string, int> columns;
     if (obj) {
-      ui->lineEditCnt->setText(QString::number(++cnt));
       LOG(LM_INFO, "RESULT " << obj->to_string());
       if (auto res = dynamic_cast<SearchDocumentResult *>(obj)) {
         for(auto &i:res->tags) {
@@ -432,13 +662,7 @@ void MainWindow::searchDocument() {
               columns[j.name()] = col;
               auto tagName = QString::fromUtf8(j.name().c_str());
               ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(tagName));
-              if (ui->comboBoxTag1->findText(tagName) < 0) {
-                ui->comboBoxTag1->addItem(tagName);
-                ui->comboBoxTag2->addItem(tagName);
-                ui->comboBoxTag3->addItem(tagName);
-                ui->comboBoxTag4->addItem(tagName);
-                ui->comboBoxTag5->addItem(tagName);
-              }
+              currentTemplate.foundTag(j.name());
             } else
               col = it->second;
             LOG(LM_INFO, "T " << j.name() << "=" << j.content());
@@ -474,9 +698,8 @@ void MainWindow::getDocument() {
 
 void MainWindow::loadDocument(int64_t doc)
 {
+  ui->pushButtonSave->setEnabled(false);
   try {
-    elapsed.start();
-
     mrpc = new MrpcClient(this);
     mrpc->waitReady(5);
     LOG(LM_INFO, "MAIN connected");
@@ -487,16 +710,16 @@ void MainWindow::loadDocument(int64_t doc)
     gd.allowAttach(true);
 //    mrpc->send(&gd);
     LOG(LM_INFO, "MAIN sent");
-    ui->lineEdit1->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
+    int t1 = mrpc->elapsed.nsecsElapsed() / 1000000;
 
     mobs::ObjectBase *obj = mrpc->sendAndWaitObj(&gd, 10);
 //    mobs::ObjectBase *obj = mrpc->execNextObj(10);
-    ui->lineEdit2->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
+    int t2 = mrpc->elapsed.nsecsElapsed() / 1000000;
+    ui->statusbar->showMessage(tr("ms: %1 %2").arg(t1).arg(t2), 10000);
 
     LOG(LM_INFO, "MAIN received");
 
     if (obj) {
-      ui->lineEditCnt->setText(QString::number(++cnt));
       LOG(LM_INFO, "RESULT ");
       if (auto pic = dynamic_cast<Document *>(obj)) {
         if (pic->type() == DocumentPdf) {
@@ -510,7 +733,8 @@ void MainWindow::loadDocument(int64_t doc)
         QPixmap pixmap;
         LOG(LM_INFO, "READ " << pic->size() << " type " << pic->type.toStr(mobs::ConvToStrHint(false)));
         u_char *p = mrpc->getAttachment(pic->size(), 95);
-        ui->lineEdit2->setText(QString::number(elapsed.nsecsElapsed() / 1000000));
+        int t3 = mrpc->elapsed.nsecsElapsed() / 1000000;
+        ui->statusbar->showMessage(tr("ms: %1 %2 %3").arg(t1).arg(t2).arg(t3), 10000);
 
         if (pic->type() == DocumentPdf) {
           ui->widget->showPdfBuffer(QByteArray((char *) p, int(pic->size())));

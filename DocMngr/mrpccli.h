@@ -45,6 +45,7 @@ public:
 
   u_char *getAttachment(int64_t sz, int percent);
 
+  QElapsedTimer elapsed;
 
 
 public slots:

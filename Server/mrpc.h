@@ -91,7 +91,14 @@ public:
 
 
 
+class Ping : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(Ping);
 
+  MemVar(int, id, KEYELEMENT1);
+  MemVar(int, cnt);
+};
 
 
 MOBS_ENUM_DEF(DocumenType, DocumentUnknown, DocumentPdf, DocumentJpeg, DocumentTiff, DocumentHtml, DocumentText);
@@ -125,6 +132,34 @@ public:
 
 };
 
+class SearchDocument : virtual public mobs::ObjectBase {
+public:
+  ObjInit(SearchDocument);
+
+  MemVector(DocumentTags, tags);
+
+};
+
+/// Anforderung Document attached
+class GetDocument : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(GetDocument);
+
+  MemVar(uint64_t, docId);
+  MemVar(std::string, type);
+  MemVar(bool, allowAttach);
+  MemVar(bool, allInfos);
+};
+
+class Dump : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(Dump);
+
+  MemVar(int, id, KEYELEMENT1);
+};
+
 class Document : virtual public mobs::ObjectBase
 {
 public:
@@ -151,6 +186,75 @@ public:
   MemVar(int64_t, size);
 };
 
+
+/// Speichern eines Dokumentes als Attachment
+class SaveDocument : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(SaveDocument);
+
+  MemMobsEnumVar(DocumenType, type);
+  MemVar(std::string, name);
+  MemVar(int64_t, size);
+  MemVector(DocumentTags, tags);
+  MemVar(uint64_t, supersedeId);
+  MemVar(uint64_t, parentId);
+  MemVar(std::string, creationInfo);
+  MemVar(mobs::MTime, creationTime);
+
+
+};
+
+
+MOBS_ENUM_DEF(TagType, TagEnumeration, TagDate, TagString, TagIdent);
+MOBS_ENUM_VAL(TagType, "enum",         "date",  "string",  "ident");
+
+class TemplateTagInfo : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(TemplateTagInfo);
+
+  MemMobsEnumVar(TagType, type);
+  MemVar(std::string, name);
+  MemVar(std::string, maskText);
+  MemVar(std::string, regex);
+  MemVar(std::string, format);
+  MemVarVector(std::string, enums); // TODO maskEnums
+  MemVar(bool, hide);
+  MemVar(int, maxSize);
+};
+
+MOBS_ENUM_DEF(TemplateType, TemplateSearch, TemplateCreate, TemplateEdit);
+MOBS_ENUM_VAL(TemplateType, "R",            "C",            "U");
+
+class TemplateInfo : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(TemplateInfo);
+
+  MemMobsEnumVar(TemplateType, type);
+  MemVar(std::string, pool, KEYELEMENT1);
+  MemVar(std::string, name, KEYELEMENT2);
+  MemVar(std::string, maskText);
+
+  MemVector(TemplateTagInfo, tags);
+  MemVector(DocumentTags, fixTags, USEVECNULL); // Tags, die serverseitig ergänzt werden
+
+};
+
+class GetConfig : virtual public mobs::ObjectBase {
+public:
+  ObjInit(GetConfig);
+  MemVar(bool, start);
+
+};
+
+class ConfigResult : virtual public mobs::ObjectBase {
+public:
+  ObjInit(ConfigResult);
+  MemVector(TemplateInfo, templates);
+
+};
 
 
 

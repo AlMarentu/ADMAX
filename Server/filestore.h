@@ -26,6 +26,7 @@
 #include <utility>
 #include "mobs/dbifc.h"
 #include "mobs/mchrono.h"
+#include "mrpc.h"
 
 using DocId = int64_t;
 using TagId = int64_t;
@@ -51,7 +52,8 @@ public:
 
 class TagPool {
 public:
-  enum TagType { T_NoParam = 0, T_Number = 1, T_String = 2, T_RegExp = 3 };
+  enum TagType { T_Enumeration = 0, T_Date = 1, T_String = 2, T_Number = 3,
+                 T_Serach7Bit };
   TagId tagId;
   TagType tagType;
   std::string tagName;
@@ -115,6 +117,7 @@ public:
 
   void supersedeDocument(DocInfo &doc, DocId supersedeId);
 
+  /// Tag mit name und Inhalt in Liste eintragen
   void insertTag(std::list<TagInfo> &tagList, const std::string &tagName, const std::string &content);
   TagId findTag(const std::string &tagName);
   std::string tagName(TagId id);
@@ -128,6 +131,10 @@ public:
   void getDocInfo(DocId id, DocInfo &info);
 
   void allDocs(std::vector<DocId> &result);
+
+  void loadTemplates(std::list<TemplateInfo> &templates);
+
+  void loadTemplatesFromFile(const std::string &filename);
 
 private:
   explicit Filestore(const std::string &basedir);

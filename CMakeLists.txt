@@ -5,14 +5,14 @@ project(ADMAX VERSION 0.0.1)
 # alternative OpenSSL
 if(APPLE)
     # hombrew Version
-    set (CMAKE_PREFIX_PATH /usr/local/opt/openssl)
+    set (CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} /usr/local/opt/openssl)
 endif()
 message(STATUS "CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}")
 
 # Options for MObs
 option(BUILD_SHARED_LIBS "Build shared lib" ON)
-option(BUILD_MONGO_INTERFACE "Build the Mongo database modules" OFF)
-option(BUILD_MARIA_INTERFACE "Build the Maria database modules" OFF)
+option(BUILD_MONGO_INTERFACE "Build the Mongo database modules" ON)
+option(BUILD_MARIA_INTERFACE "Build the Maria database modules" ON)
 option(BUILD_SQLITE_INTERFACE "Build the SQLite database modules" ON)
 option(BUILD_INFORMIX_INTERFACE "Build the Informix database modules" OFF)
 

@@ -3,8 +3,6 @@ set (CMAKE_CXX_STANDARD 11)
 
 if (CMAKE_HOST_WIN32)
     set (CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} C:/poppler-21.04.0 )
-elseif(CMAKE_HOST_APPLE)
-    set (CMAKE_PREFIX_PATH "/usr/local/opt/qt5")
 endif()
 
 set (CMAKE_AUTOMOC ON)
@@ -40,5 +38,7 @@ message(STATUS "Poppler=${POPPLER_INCLUDE} - ${POPPLER_LIB}")
 add_executable (DocMngr main.cpp mainwindow.cpp mainwindow.h mrpccli.cpp mrpccli.h viewer.cpp viewer.h)
 
 find_package (Qt${QT_VERSION} COMPONENTS ${REQUIRED_LIBS} REQUIRED)
+
+target_compile_definitions(DocMngr PUBLIC USE_POPPLER)
 
 target_link_libraries (DocMngr  ${MOBS_LIBRARIES} ${POPPLER_LIB} ${REQUIRED_LIBS_QUALIFIED} )
