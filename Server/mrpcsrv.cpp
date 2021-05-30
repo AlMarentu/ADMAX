@@ -85,6 +85,19 @@ public:
   XmlInput &m_xi;
 };
 
+class TagInfoCache {
+public:
+  string name;
+  bool isDate = false;
+  bool isIdent = false;
+  bool isTag = false; // kein Inhalt
+  set<string> token;
+  mobs::StringFormatter formatter{};
+
+  void addInfo(const TemplateTagInfo &t);
+  bool format(string &value) const;
+
+};
 
 class SessionContext {
 public:
@@ -92,6 +105,12 @@ public:
   u_int sessionId;
   string login;
   vector<u_char> key;
+
+  list<TemplateInfo> tInfo{}; // Liste für diese Session erlaubter Templates // TODO für "normale" user
+  // Caches für das Template cacheTemplate
+  map<string, TagInfoCache> tagInfoCache;
+  string poolCache;
+  string cacheTemplate;
 
   void enter();
   void release();
@@ -290,6 +309,8 @@ public:
   bool encryptedInput = false;
   SessionContext *ctx = nullptr;
   DocInfo attachmentInfo{};
+  int64_t attachmentRefId = 0;
+  string attachmentError; // if set, don#t save and return this message
 };
 
 
@@ -483,13 +504,29 @@ void executeRequest(SearchDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
   TRACE("");
   LOG(LM_INFO, "COMMAND " << obj.to_string());
 
+  SessionContext &context = *xi.ctx;
   auto store = Filestore::instance();
+  if (context.tInfo.empty())
+    store->loadTemplates(context.tInfo);
+
   list<TagInfo> tagInfos;
   map<TagId, TagSearch> tagSearch;
+  // TODO Template prüfen (=Rechte), fixed Tags hinzu, pool aus template nehmen
+  string pool;
+  if (not obj.templateName().empty()) {
+    for (auto const &i:context.tInfo) {
+      if (i.name() == obj.templateName()) {
+        pool = i.pool();
+      }
+    }
+  }
+
+  if (pool.empty())
+    THROW("template " << obj.templateName() << " invalid");
 
   map<TagId, string> tagNames;
   for (auto i:obj.tags) {
-    TagId id = store->findTag(i.name());
+    TagId id = store->findTag(pool, i.name());
     if (id) {
       tagInfos.emplace_back(id, i.content());
       tagNames[id] = i.name();
@@ -571,9 +608,89 @@ void executeRequest(SearchDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
 //
 //}
 
+
+
+void TagInfoCache::addInfo(const TemplateTagInfo &t) {
+  name = t.name();
+  switch (t.type()) {
+    case TagIdent:
+      isIdent = true;
+    case TagString:
+      if (not t.regex().empty())
+        formatter.insertPattern(mobs::to_wstring(t.regex()), mobs::to_wstring(t.format()));
+      break;
+    case TagEnumeration:
+      for (auto &i:t.enums)
+        token.emplace(i());
+      isTag = token.empty();
+      break;
+    case TagDate:
+      isDate = true;
+      formatter.insertPattern(L"([0-3]\\d).([01]\\d).([12]\\d{3})", L"%3%d-%2%02d-%1%02d");
+      break;
+  }
+}
+
+
+bool TagInfoCache::format(string &value) const {
+  if (isTag) {
+    return value.empty();
+  }
+  if (not formatter.empty()) {
+    wstring result;
+    if (formatter.format(mobs::to_wstring(value), result)) {
+      LOG(LM_INFO, "FORMAT " << name << " " << value << " -> " << mobs::to_string(result));
+      value = mobs::to_string(result);
+      return true;
+    }
+  }
+  if (isDate) {
+    mobs::MDate t;
+    if (not mobs::string2x(value, t))
+      return false;
+    LOG(LM_INFO, "FORMAT " << name << " " << value << " -> " << mobs::to_string_iso8601(t, mobs::MDay));
+    value = mobs::to_string_iso8601(t, mobs::MDay);
+  }
+  if (not token.empty()) {
+    if (token.find(value) != token.end()) {
+      LOG(LM_INFO, "TOKEN " << name << " " << value);
+      return true;
+    }
+  } else
+    return true;
+
+  return false;
+}
+
 void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
   TRACE("");
+  SessionContext &context = *xi.ctx;
   auto store = Filestore::instance();
+  xi.attachmentError.clear();
+  xi.attachmentRefId = obj.refId();
+  if (context.tInfo.empty())
+    store->loadTemplates(context.tInfo);
+  // TODO Template prüfen (=Rechte), fixed Tags hinzu, nur Systemuser darf ohne Template speichern
+  string pool;
+  if (not obj.templateName().empty()) {
+    if (context.cacheTemplate != obj.templateName()) {
+      for (auto const &i:context.tInfo) {
+        if (i.name() == obj.templateName()) {
+          context.poolCache = i.pool();
+          context.tagInfoCache.clear();
+          for (auto &t:i.tags)
+            context.tagInfoCache[t.name()].addInfo(t);
+        }
+      }
+    }
+    pool = context.poolCache;
+  } else
+    pool = obj.pool();
+
+
+  if (pool.empty())
+    THROW("template " << obj.templateName() << " invalid");
+
   DocInfo docInfo;
   switch (obj.type()) {
     case DocumentJpeg: docInfo.docType = DocJpeg; break;
@@ -583,24 +700,39 @@ void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
     case DocumentHtml: docInfo.docType = DocHtml; break;
     case DocumentUnknown: docInfo.docType = DocUnk; break;
   }
-  docInfo.creationInfo = "ATTACHED";
+  // TODO Template prüfen (=Rechte), fixed Tags hinzu, pool aus template nehmen
   docInfo.fileSize = obj.size();
-//    docInfo.creation();
+  docInfo.creation = obj.creationTime();
+  docInfo.creationInfo = obj.creationInfo();
   std::list<TagInfo> tagInfo;
-  store->insertTag(tagInfo, "name", obj.name());
-  for (auto &t:obj.tags)
-    store->insertTag(tagInfo, t.name(), t.content());
-  store->newDocument(docInfo, tagInfo);
+  //store->insertTag(tagInfo, pool, "name", obj.name());
+  for (auto &t:obj.tags) {
+    string value = t.content();
+    if (not obj.templateName().empty()) {
+      auto f = context.tagInfoCache.find(t.name());
+      if (f != context.tagInfoCache.end()) {
+        if (not f->second.format(value)) {
+          LOG(LM_ERROR, "format failed " << t.name());
+          xi.attachmentError = STRSTR("BAD TAG " << t.name());
+        }
+      }
+    }
+    store->insertTag(tagInfo, pool, t.name(), value);
+  }
+  if (xi.attachmentError.empty())
+    store->newDocument(docInfo, tagInfo);
 
   xi.attachmentInfo = docInfo;
 }
 
 void executeRequest(GetConfig &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
+  SessionContext &context = *xi.ctx;
   auto store = Filestore::instance();
   ConfigResult co;
-  list<TemplateInfo> tinf;
-  store->loadTemplates(tinf);
-  for (auto t:tinf) {
+  context.tInfo.clear();
+  store->loadTemplates(context.tInfo);
+  // TODO Rechte filtern
+  for (auto t:context.tInfo) {
     co.templates[mobs::MemBaseVector::nextpos].doCopy(t);
   }
   LOG(LM_INFO, "Result: " << co.to_string());
@@ -615,6 +747,8 @@ ObjRegister(GetDocument);
 ObjRegister(GetConfig);
 
 void ExecVisitor::visit(mobs::ObjectBase &obj) {
+  if (not m_xi.ctx)
+    THROW("missing session context");
   if (auto mrpc = dynamic_cast<GetDocument *>(&obj))
     executeRequest(*mrpc, m_xmlOut, m_xi);
   else if (auto mrpc = dynamic_cast<SearchDocument *>(&obj))
@@ -700,29 +834,44 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
 
           auto store = Filestore::instance();
 
-          xr.attachmentInfo.fileName = store->writeFile(istr, xr.attachmentInfo);
-          xr.attachmentInfo.checkSum = cry.hashStr();
-          LOG(LM_INFO, "HASH " << cry.hashStr());
-          store->documentCreated(xr.attachmentInfo);
+          if (xr.attachmentError.empty()) {
+            xr.attachmentInfo.fileName = store->writeFile(istr, xr.attachmentInfo);
+            xr.attachmentInfo.checkSum = cry.hashStr();
+            LOG(LM_INFO, "HASH " << cry.hashStr());
+            store->documentCreated(xr.attachmentInfo);
+            if (cry.bad())
+              THROW("error while encrypting attachment");
+            LOG(LM_INFO, "Attachment saved");
+          } else {
+            xr.attachmentInfo.id = 0;
+            // skip attachment
+            size_t c = 0;
+            char ch;
+            while (not istr.get(ch).eof()) c++;
+            LOG(LM_INFO, "HASH " << cry.hashStr() << " " << c);
+            if (cry.bad())
+              THROW("error while encrypting attachment");
+            LOG(LM_INFO, "Attachment skipped");
+          }
+          xr.attachmentInfo.fileSize = 0;
 
-
-          LOG(LM_INFO, "Attachment saved");
           CommandResult doc;
           doc.docId(xr.attachmentInfo.id);
-          if (cry.bad())
-            doc.msg("BAD");
-          else
+          doc.refId(xr.attachmentRefId);
+          if (xr.attachmentError.empty())
             doc.msg("OK");
+          else
+            doc.msg(xr.attachmentError);
 
           doc.traverse(xo);
-          xr.attachmentInfo.fileSize = 0;
 
 //          xstream.setf(std::ios::skipws);
           LOG(LM_INFO, "endEncryption; finish=" << xr.finish);
           xr.endEncryption();
-          auto *tp = dynamic_cast<mobs::TcpStBuf *>(xstream.rdbuf());
+        }
+        if (auto *tp = dynamic_cast<mobs::TcpStBuf *>(xstream.rdbuf())) {
           LOG(LM_INFO, "CHECK STATE " << tp->bad());
-          if (tp and tp->bad())  // TODO iostream-exception
+          if (tp->bad())  // TODO iostream-exception
             throw runtime_error("stream lost");
         }
       } while (not xr.finish and not xr.eot());
@@ -841,8 +990,16 @@ int main(int argc, char* argv[]) {
       Filestore::instance()->loadTemplatesFromFile(configfile);
       return 0;
     }
+#ifndef NDEBUG
+    auto store = Filestore::instance();
+    ConfigResult co;
+    list<TemplateInfo> tinf;
+    store->loadTemplates(tinf);
+    for (auto t:tinf) {
+      LOG(LM_INFO, "Config: " << t.to_string());
+    }
+#endif
     srv.server();
-
 
   }
   catch (std::ios_base::failure &e) {

@@ -62,23 +62,24 @@ public:
   MemVar(int64_t, counter, VERSIONFIELD);
 };
 
-class DMGR_TagTransformer : virtual public mobs::ObjectBase {
-public:
-  ObjInit(DMGR_TagTransformer);
-  MemVar(std::string, regex);
-  MemVar(std::string, format);
-};
+//class DMGR_TagTransformer : virtual public mobs::ObjectBase {
+//public:
+//  ObjInit(DMGR_TagTransformer);
+//  MemVar(std::string, regex);
+//  MemVar(std::string, format);
+//};
 
 class DMGR_TagPool : virtual public mobs::ObjectBase {
 public:
   ObjInit(DMGR_TagPool);
   MemVar(int, id, KEYELEMENT1);
   MemVar(int64_t, version, VERSIONFIELD);
-  MemVar(int, tagType); // TagPool::TagType  T_Enumeration = 0, T_Date = 1, T_String = 2, T_Number = 3
+  MemMobsEnumVar(TagType, tagType); // TagEnumeration, TagDate, TagString, TagIdent);
   MemVar(std::string, name);
-  MemVector(DMGR_TagTransformer, transformer); // T_String T_Number
-  MemVarVector(std::string, enumeration, DBJSON); // T_Enumeration wenn leer, dann nur Tag ohne Inhalt
-  MemVar(std::string, searchTag);   // weiteres Tag mit dem Suchinhalt (Methode steht in dessem tagType (> 100)
+  MemVar(std::string, pool);  // unique(name, pool)
+//  MemVector(DMGR_TagTransformer, transformer); // T_String T_Number
+//  MemVarVector(std::string, enumeration, DBJSON); // T_Enumeration wenn leer, dann nur Tag ohne Inhalt
+//  MemVar(std::string, searchTag);   // weiteres Tag mit dem Suchinhalt (Methode steht in dessem tagType (> 100)
   MemVar(int, maxSize);
 };
 
@@ -257,10 +258,12 @@ void Filestore::readFile(const std::string &name, std::ostream &dest) {
   }
 }
 
-void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &tagName, const std::string &content) {
+void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &pool, const std::string &tagName,
+                          const std::string &content) {
   LOG(LM_INFO, "insertTag " << tagName << " " << content);
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
   DMGR_TagPool tpool;
+  tpool.pool(pool);
   tpool.name(tagName);
   auto cursor = dbi.qbe(tpool);
   if (cursor->eof()) {
@@ -270,7 +273,7 @@ void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &tagName, 
     dbi.load(cntr);
     dbi.save(cntr);
     tpool.id(cntr.counter());
-    tpool.tagType(TagPool::T_String);
+//    tpool.tagType(TagPool::T_String); TODO
     dbi.save(tpool);
   }
   else {
@@ -287,10 +290,11 @@ void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &tagName, 
 }
 
 
-TagId Filestore::findTag(const std::string &tagName) {
+TagId Filestore::findTag(const std::string &pool, const std::string &tagName) {
   LOG(LM_INFO, "findTag " << tagName);
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
   DMGR_TagPool tpool;
+  tpool.pool(pool);
   tpool.name(tagName);
   auto cursor = dbi.qbe(tpool);
   if (cursor->eof()) {

@@ -118,8 +118,9 @@ public:
   void supersedeDocument(DocInfo &doc, DocId supersedeId);
 
   /// Tag mit name und Inhalt in Liste eintragen
-  void insertTag(std::list<TagInfo> &tagList, const std::string &tagName, const std::string &content);
-  TagId findTag(const std::string &tagName);
+  void insertTag(std::list<TagInfo> &tags, const std::string &pool, const std::string &tagName,
+                 const std::string &content);
+  TagId findTag(const std::string &pool, const std::string &tagName);
   std::string tagName(TagId id);
 
 //  void tagSearch(const std::list<TagSearchInfo> &searchList, std::list<SearchResult> &result);

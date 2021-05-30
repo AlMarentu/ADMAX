@@ -33,6 +33,7 @@
 #include "mobs/mchrono.h"
 #include "mrpc.h"
 #include <fstream>
+#include <sstream>
 #include <array>
 #include <getopt.h>
 
@@ -105,8 +106,12 @@ public:
       // parsen abbrechen
       stop();
     } else if (auto *sess = dynamic_cast<CommandResult *>(obj)) {
-      if (sess->msg() != "OK")
-        THROW("MsgResult = " << sess->msg());
+      if (sess->msg() != "OK") {
+        if (sess->refId() > 0)
+          LOG(LM_ERROR, "ERROR in RefId " << sess->refId() << ": " << sess->msg());
+        else
+          THROW("MsgResult = " << sess->msg());
+      }
     } else if (auto *sess = dynamic_cast<SessionResult *>(obj)) {
       LOG(LM_ERROR, "SESSIORESULT " << sess->to_string());
       sessionId = sess->id();
@@ -176,7 +181,240 @@ public:
 };
 
 
+void doRestore(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::XmlOut &xo) {
+  if (not xr.dumpStr.is_open())
+    THROW("cannot open dump file");
+  LOG(LM_INFO, "READ DUMP");
+  mobs::CryptIstrBuf dumpStrbufI(xr.dumpStr);
+  dumpStrbufI.getCbb()->setReadDelimiter('\0');
+  std::wistream xin(&dumpStrbufI);
+  XmlDump xd(xin);
+  int count = 0;
+  while (xr.dumpStr.good()) {
+    xd.lastObj = nullptr;
+    xd.parse();
+    LOG(LM_INFO, "LEV " << xd.level());
+    if (xd.lastObj and count) {
+//            LOG(LM_INFO, "PARSE");
+//            xr.parse();
+//            LOG(LM_INFO, "PARSE DONE");
+//
 
+
+      vector<u_char> iv;
+      iv.resize(mobs::CryptBufAes::iv_size());
+      mobs::CryptBufAes::getRand(iv);
+      xf.startEncrypt(new mobs::CryptBufAes(sessionKey, iv, "", true));
+    }
+    if (xd.lastObj) {
+      count++;
+      LOG(LM_INFO, "OBJ " << xd.lastObj->to_string());
+      if (auto obj = dynamic_cast<DocumentRaw *>(xd.lastObj)) {
+        dumpStrbufI.getCbb()->setReadDelimiter();
+        dumpStrbufI.getCbb()->setReadLimit(obj->size() + 1);
+        int c = dumpStrbufI.getCbb()->sbumpc();
+        LOG(LM_INFO, "C = " << c);
+        if (c)
+          THROW("invalid delimiter");
+        std::vector<char> buf;
+        buf.resize(obj->size());
+        streamsize sz = dumpStrbufI.getCbb()->sgetn(&buf[0], buf.size());
+        if (sz != obj->size())
+          THROW("eof reached");
+        dumpStrbufI.getCbb()->setReadDelimiter('\0');
+        dumpStrbufI.getCbb()->setReadLimit();
+
+        SaveDocument sd;
+        sd.name(obj->name());
+        sd.tags(obj->info.tags);
+        sd.type(obj->type());
+        sd.size(obj->size());
+        sd.creationInfo(obj->info.creationInfo());
+        sd.creationTime(obj->info.creationTime());
+
+        LOG(LM_INFO, "GENERATE " << sd.to_string());
+        sd.traverse(xo);
+        xf.stopEncrypt();
+        xf.putc(L'\0');
+        xf.sync();
+
+        LOG(LM_INFO, "Start attachment size=" << sz);
+        vector<u_char> iv;
+        iv.resize(mobs::CryptBufAes::iv_size());
+        mobs::CryptBufAes::getRand(iv);
+        mobs::CryptBufAes cry(sessionKey, iv, "", true);
+        cry.setOstr(con);
+        ostream ostb(&cry);
+        ostb.write(&buf[0], buf.size());
+        cry.finalize();
+
+
+        // debug-File
+        static int fcnt = 1;
+        std::string name = "tmpd";
+        name += std::to_string(fcnt++);
+        name += ".dat";
+        ofstream tmp(name.c_str());
+        tmp.write(&buf[0], buf.size());
+        tmp.close();
+      } else if (auto obj = dynamic_cast<Document *>(xd.lastObj)) {
+        SaveDocument sd;
+        sd.name(obj->name());
+        sd.tags(obj->info.tags);
+        sd.type(obj->type());
+        sd.creationInfo(obj->info.creationInfo());
+        sd.creationTime(obj->info.creationTime());
+        sd.size(obj->content().size());
+
+        LOG(LM_INFO, "GENERATE " << sd.to_string());
+        sd.traverse(xo);
+        xf.stopEncrypt();
+        xf.putc(L'\0');
+        xf.sync();
+
+        LOG(LM_INFO, "Start attachment size=" << obj->content().size());
+        vector<u_char> iv;
+        iv.resize(mobs::CryptBufAes::iv_size());
+        mobs::CryptBufAes::getRand(iv);
+        mobs::CryptBufAes cry(sessionKey, iv, "", true);
+        cry.setOstr(con);
+        ostream ostb(&cry);
+        ostb.write((char *)&obj->content()[0], obj->content().size());
+        cry.finalize();
+
+
+      }
+
+      if (count > 2) {
+        // Verzögert die Results auswerten, damit keine unnütze Wartezeit entsteht
+        LOG(LM_INFO, "PARSE " << count);
+        xr.parse();
+        LOG(LM_INFO, "STOPPED  " << xr.level());
+      }
+    } else {
+      LOG(LM_INFO, "NO OBJ");
+//            break;
+    }
+    delete xd.lastObj;
+    xd.lastObj = nullptr;
+  }
+};
+
+void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::XmlOut &xo) {
+  if (not xr.dumpStr.is_open())
+    THROW("cannot open import file");
+  LOG(LM_INFO, "READ INPUT");
+  xr.dumpStr.exceptions(ios_base::badbit);
+  vector<string> head;
+  string templateName;
+  char buf[1024];
+  xr.dumpStr.getline(buf, sizeof(buf));
+  stringstream ss(buf);
+  while (not ss.eof()) {
+    ss.getline(buf, sizeof(buf), '\t');
+    head.emplace_back(buf);
+  }
+
+  int count = 0;
+  while (not xr.dumpStr.eof()) {
+    SaveDocument sd;
+    sd.refId(count +1); // line of input
+
+    xr.dumpStr.getline(buf, sizeof(buf));
+    stringstream ss(buf);
+    auto iter = head.cbegin();
+    while (not ss.eof()) {
+      if (iter == head.end())
+        break;
+      ss.getline(buf, sizeof(buf), '\t');
+//      LOG(LM_INFO, "TOK " << *iter << " CONT " << buf);
+      if (*iter == "$creation") {
+        mobs::MTime t;
+        if (mobs::string2x(buf, t))
+          sd.creationTime(t);
+        else
+          LOG(LM_ERROR, "invalide DateTime " << buf);
+      } else if (*iter == "$template") {
+        if (buf[0])
+          templateName = buf;
+      } else if (*iter == "$filename") {
+        sd.name(buf);
+      } else if (not iter->empty() and (*iter)[0] != '$') {
+        auto &t = sd.tags[mobs::MemBaseVector::nextpos];
+        t.name(*iter);
+        t.content(buf);
+      }
+      iter++;
+    }
+    string filename = "../../b1.pdf";
+    size_t pos = filename.rfind('.');
+    string ext;
+    if (pos != string::npos)
+      ext = mobs::toUpper(filename.substr(pos+1));
+    if (ext == "PDF")
+      sd.type(DocumentPdf);
+    else if (ext == "TIF" or ext == "TIFF")
+      sd.type(DocumentTiff);
+    else if (ext == "JPG" or ext == "JPEG")
+      sd.type(DocumentJpeg);
+    else {
+      LOG(LM_ERROR, "invalid file type " << filename);
+      continue;
+    }
+
+    if (templateName.empty()) {
+      LOG(LM_ERROR, "template name missing");
+      continue;
+    }
+    sd.templateName(templateName);
+
+    ifstream data(filename, ios::binary);
+    if (not data.is_open()) {
+      LOG(LM_INFO, "file " << filename << " not found");
+      continue;
+    }
+
+    data.seekg(0, ios_base::end);
+    sd.size(data.tellg());
+    data.seekg(0, ios_base::beg);
+
+
+    LOG(LM_INFO, "DOC " << sd.to_string());
+    count++;
+
+#if 1
+    vector<u_char> iv;
+    if (xf.cryptingLevel() == 0)
+    {
+      iv.resize(mobs::CryptBufAes::iv_size());
+      mobs::CryptBufAes::getRand(iv);
+      xf.startEncrypt(new mobs::CryptBufAes(sessionKey, iv, "", true));
+    }
+    sd.traverse(xo);
+    xf.stopEncrypt();
+    xf.putc(L'\0');
+    xf.sync();
+
+    LOG(LM_INFO, "Start attachment size=");
+    mobs::CryptBufAes::getRand(iv);
+    mobs::CryptBufAes cry(sessionKey, iv, "", true);
+    cry.setOstr(con);
+    ostream ostb(&cry);
+    ostb << data.rdbuf();
+    cry.finalize();
+    data.close();
+
+
+    if (count > 2) {
+      // Verzögert die Results auswerten, damit keine unnütze Wartezeit entsteht
+      LOG(LM_INFO, "PARSE " << count);
+      xr.parse();
+      LOG(LM_INFO, "STOPPED  " << xr.level());
+    }
+
+#endif
+  }
+}
 
 
 void client(const string &mode, const string& server, int port, const string &keystore, const string &keyname, const string &pass, const string &file) {
@@ -278,122 +516,10 @@ void client(const string &mode, const string& server, int port, const string &ke
         d1.traverse(xo);
       } else if (mode == "restore") {
         xr.dumpStr.open(file, ios::binary | ios::in);
-        if (not xr.dumpStr.is_open())
-          THROW("cannot open dump file");
-        LOG(LM_INFO, "READ DUMP");
-        mobs::CryptIstrBuf dumpStrbufI(xr.dumpStr);
-        dumpStrbufI.getCbb()->setReadDelimiter('\0');
-        std::wistream xin(&dumpStrbufI);
-        XmlDump xd(xin);
-        int count = 0;
-        while (xr.dumpStr.good()) {
-          xd.lastObj = nullptr;
-          xd.parse();
-          LOG(LM_INFO, "LEV " << xd.level());
-          if (xd.lastObj and count) {
-//            LOG(LM_INFO, "PARSE");
-//            xr.parse();
-//            LOG(LM_INFO, "PARSE DONE");
-//
-
-
-            vector<u_char> iv;
-            iv.resize(mobs::CryptBufAes::iv_size());
-            mobs::CryptBufAes::getRand(iv);
-            xf.startEncrypt(new mobs::CryptBufAes(sessionKey, iv, "", true));
-          }
-          if (xd.lastObj) {
-            count++;
-            LOG(LM_INFO, "OBJ " << xd.lastObj->to_string());
-            if (auto obj = dynamic_cast<DocumentRaw *>(xd.lastObj)) {
-              dumpStrbufI.getCbb()->setReadDelimiter();
-              dumpStrbufI.getCbb()->setReadLimit(obj->size() + 1);
-              int c = dumpStrbufI.getCbb()->sbumpc();
-              LOG(LM_INFO, "C = " << c);
-              if (c)
-                THROW("invalid delimiter");
-              std::vector<char> buf;
-              buf.resize(obj->size());
-              streamsize sz = dumpStrbufI.getCbb()->sgetn(&buf[0], buf.size());
-              if (sz != obj->size())
-                THROW("eof reached");
-              dumpStrbufI.getCbb()->setReadDelimiter('\0');
-              dumpStrbufI.getCbb()->setReadLimit();
-
-              SaveDocument sd;
-              sd.name(obj->name());
-              sd.tags(obj->info.tags);
-              sd.type(obj->type());
-              sd.size(obj->size());
-              sd.creationInfo(obj->info.creationInfo());
-              sd.creationTime(obj->info.creationTime());
-
-              LOG(LM_INFO, "GENERATE " << sd.to_string());
-              sd.traverse(xo);
-              xf.stopEncrypt();
-              xf.putc(L'\0');
-              xf.sync();
-
-              LOG(LM_INFO, "Start attachment size=" << sz);
-              vector<u_char> iv;
-              iv.resize(mobs::CryptBufAes::iv_size());
-              mobs::CryptBufAes::getRand(iv);
-              mobs::CryptBufAes cry(sessionKey, iv, "", true);
-              cry.setOstr(con);
-              ostream ostb(&cry);
-              ostb.write(&buf[0], buf.size());
-              cry.finalize();
-
-
-              // debug-File
-              static int fcnt = 1;
-              std::string name = "tmpd";
-              name += std::to_string(fcnt++);
-              name += ".dat";
-              ofstream tmp(name.c_str());
-              tmp.write(&buf[0], buf.size());
-              tmp.close();
-            } else if (auto obj = dynamic_cast<Document *>(xd.lastObj)) {
-              SaveDocument sd;
-              sd.name(obj->name());
-              sd.tags(obj->info.tags);
-              sd.type(obj->type());
-              sd.creationInfo(obj->info.creationInfo());
-              sd.creationTime(obj->info.creationTime());
-              sd.size(obj->content().size());
-
-              LOG(LM_INFO, "GENERATE " << sd.to_string());
-              sd.traverse(xo);
-              xf.stopEncrypt();
-              xf.putc(L'\0');
-              xf.sync();
-
-              LOG(LM_INFO, "Start attachment size=" << obj->content().size());
-              vector<u_char> iv;
-              iv.resize(mobs::CryptBufAes::iv_size());
-              mobs::CryptBufAes::getRand(iv);
-              mobs::CryptBufAes cry(sessionKey, iv, "", true);
-              cry.setOstr(con);
-              ostream ostb(&cry);
-              ostb.write((char *)&obj->content()[0], obj->content().size());
-              cry.finalize();
-
-
-            }
-
-            if (count > 2) {
-              // Verzögert die Results auswerten, damit keine unnütze Wartezeit entsteht
-              LOG(LM_INFO, "PARSE " << count);
-              xr.parse();
-              LOG(LM_INFO, "STOPPED  " << xr.level());
-            }
-          } else {
-            LOG(LM_INFO, "NO OBJ");
-//            break;
-          }
-          delete xd.lastObj;
-          xd.lastObj = nullptr;
-        }
+        doRestore(con, xr, xf, xo);
+      } else if (mode == "import") {
+        xr.dumpStr.open(file, ios::in);
+        doImport(con, xr, xf, xo);
       } else {
         Ping p;
         p.id(1);
@@ -489,6 +615,7 @@ void usage() {
        << "  genkey ... generate key pair\n"
        << "  dump ... dump database\n"
        << "  restore ... restore database\n"
+       << "  import ... import from file\n"
        << "  ping ... ping server\n";
   exit(1);
 }

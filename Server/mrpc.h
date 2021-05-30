@@ -54,7 +54,7 @@ class CommandResult : virtual public mobs::ObjectBase
 public:
   ObjInit(CommandResult);
 
-  MemVar(int64_t, msgId);
+  MemVar(int64_t, refId);
   MemVar(uint64_t, docId);
   MemVar(std::string, msg);
 
@@ -136,6 +136,8 @@ class SearchDocument : virtual public mobs::ObjectBase {
 public:
   ObjInit(SearchDocument);
 
+  MemVar(std::string, pool);
+  MemVar(std::string, templateName); // für fixedTags und Berechtigung; ist TemplateName gesetzt, wird pool ignoriert
   MemVector(DocumentTags, tags);
 
 };
@@ -147,9 +149,9 @@ public:
   ObjInit(GetDocument);
 
   MemVar(uint64_t, docId);
-  MemVar(std::string, type);
-  MemVar(bool, allowAttach);
-  MemVar(bool, allInfos);
+  MemVar(std::string, type);  // TODO sinvoll?
+  MemVar(bool, allowAttach);  // grpße Dokumente dürfen als Attachment gesendet werden
+  MemVar(bool, allInfos);     // alle vorhandenen Infos senden
 };
 
 class Dump : virtual public mobs::ObjectBase
@@ -169,6 +171,7 @@ public:
   MemObj(DocumentInfo, info);
   MemMobsEnumVar(DocumenType, type);
   MemVar(std::string, name);
+  MemVar(std::string, pool, USENULL);
   MemVar(std::vector<u_char>, content);
 
 };
@@ -183,6 +186,7 @@ public:
   MemObj(DocumentInfo, info);
   MemMobsEnumVar(DocumenType, type);
   MemVar(std::string, name);
+  MemVar(std::string, pool, USENULL);
   MemVar(int64_t, size);
 };
 
@@ -194,7 +198,10 @@ public:
   ObjInit(SaveDocument);
 
   MemMobsEnumVar(DocumenType, type);
+  MemVar(int64_t, refId);
   MemVar(std::string, name);
+  MemVar(std::string, pool);
+  MemVar(std::string, templateName); // für fixedTags und Berechtigung; entweder Pool oder TemplateName muss gesetzt sein
   MemVar(int64_t, size);
   MemVector(DocumentTags, tags);
   MemVar(uint64_t, supersedeId);
@@ -214,7 +221,7 @@ class TemplateTagInfo : virtual public mobs::ObjectBase
 public:
   ObjInit(TemplateTagInfo);
 
-  MemMobsEnumVar(TagType, type);
+  MemMobsEnumVar(TagType, type, LENGTH(8));
   MemVar(std::string, name);
   MemVar(std::string, maskText);
   MemVar(std::string, regex);
@@ -232,9 +239,9 @@ class TemplateInfo : virtual public mobs::ObjectBase
 public:
   ObjInit(TemplateInfo);
 
-  MemMobsEnumVar(TemplateType, type);
+  MemMobsEnumVar(TemplateType, type, LENGTH(1));
   MemVar(std::string, pool, KEYELEMENT1);
-  MemVar(std::string, name, KEYELEMENT2);
+  MemVar(std::string, name, KEYELEMENT2, ALTNAME(templNam));
   MemVar(std::string, maskText);
 
   MemVector(TemplateTagInfo, tags);

@@ -123,6 +123,7 @@ public:
 class ActionTemplate {
 public:
   std::string pool;
+  std::string name;
   std::list<SearchTag *> searchTags;
   std::set<std::string> extraTags;  // zusätzliche gefundene Tags
 
@@ -308,6 +309,7 @@ void MainWindow::initTags(const TemplateInfo &templateInfo) {
   auto &currentTemplate = actionTemplates[count];
   currentTemplate.extraTags.emplace("OriginalFileName");  // TODO
   currentTemplate.pool = templateInfo.pool();
+  currentTemplate.name = templateInfo.name();
 
   ui->tabWidgetTags->setTabText(count, QString::fromUtf8(templateInfo.maskText().c_str()));
 
@@ -472,6 +474,7 @@ void MainWindow::save() {
     int pos = currentFile.lastIndexOf('/');
     doc.name(currentFile.midRef(pos+1).toUtf8().data());
     doc.size(file->size());
+    doc.templateName(currentTemplate.name);
     if (currentFile.endsWith(".pdf", Qt::CaseSensitivity::CaseInsensitive))
       doc.type(DocumenType::DocumentPdf);
     else if (currentFile.endsWith(".jpg", Qt::CaseSensitivity::CaseInsensitive))
@@ -630,6 +633,7 @@ void MainWindow::searchDocument() {
     LOG(LM_INFO, "MAIN connected");
 
     SearchDocument sd;
+    sd.templateName(currentTemplate.name);
     for (auto s:currentTemplate.searchTags)
       if (not s->evaluate(sd.tags, true))
         return;
