@@ -120,6 +120,14 @@ public:
   QButtonGroup *bg = nullptr;
 };
 
+class DisplayTag {
+public:
+  QString maskName;
+  mobs::StringFormatter formatter{};
+  bool isDate = false;
+  bool groupBy = false;
+};
+
 class ActionTemplate {
 public:
   std::string pool;
@@ -127,9 +135,14 @@ public:
   std::list<SearchTag *> searchTags;
   std::set<std::string> extraTags;  // zusätzliche gefundene Tags
 
+  std::list<QString> tableHeads;
+  std::map<std::string, DisplayTag> tableDisplay;
+
   void foundTag(const std::string &tag);
   void clear();
   bool setTag(const std::string &tag, const std::string &content);
+
+  int getDispPos(const QString &n);
 
   QFormLayout *layout = nullptr;
 
@@ -176,6 +189,13 @@ void ActionTemplate::clear() {
     if (s->bg and s->bg->button(-1))
       s->bg->button(-1)->setChecked(true);
   }
+}
+
+int ActionTemplate::getDispPos(const QString &n) {
+  auto i = std::find(tableHeads.begin(), tableHeads.end(), n);
+  if (i == tableHeads.end())
+    return -1;
+  return std::distance(tableHeads.begin(), i);
 }
 
 
@@ -313,6 +333,37 @@ void MainWindow::initTags(const TemplateInfo &templateInfo) {
 
   ui->tabWidgetTags->setTabText(count, QString::fromUtf8(templateInfo.maskText().c_str()));
 
+  bool firstIdent = true;
+  std::string groupTag;
+  if (templateInfo.type() == TemplateSearch) { // table info
+    for (auto &t:templateInfo.tags) {
+      if (firstIdent and t.type() == TagIdent) {
+        groupTag = t.name();
+        firstIdent = false;
+      }
+      if (t.hide())
+        continue;
+      QString n = QString::fromUtf8(t.maskText().c_str());
+      if (n.isEmpty())
+        continue;
+      if (std::find(currentTemplate.tableHeads.begin(), currentTemplate.tableHeads.end(), n) == currentTemplate.tableHeads.end()) {
+        currentTemplate.tableHeads.emplace_back(n);
+      }
+      auto &dt = currentTemplate.tableDisplay[t.name()];
+      dt.maskName = n;
+      if (t.type() == TagDate)
+        dt.isDate = true;
+      else if (t.type() == TagDisplay and not t.regex().empty() and not t.format().empty()) {
+        dt.formatter.insertPattern(mobs::to_wstring(t.regex()), mobs::to_wstring(t.format()));
+      }
+      if (not groupTag.empty() and t.name() == groupTag) {
+        dt.groupBy = true;
+        groupTag = "";
+      }
+
+    }
+  }
+
 //  ui->groupBoxTags->setTitle(QString::fromUtf8(ti.maskText().c_str()));
 //  if (ui->groupBoxTags->layout())
 //    ui->groupBoxTags->layout()->deleteLater();
@@ -332,6 +383,8 @@ void MainWindow::initTags(const TemplateInfo &templateInfo) {
     currentTemplate.searchTags.emplace_back(sTag);
   }
   for (auto &t:templateInfo.tags) {
+    if (t.type() == TagDisplay)
+      continue;
     LOG(LM_INFO, "TAG " << t.type.toStr(mobs::ConvToStrHint(false)) << " " << t.maskText());
     QString n = QString::fromUtf8(t.maskText().c_str());
     SearchTag *sTag = nullptr;
@@ -445,6 +498,8 @@ void MainWindow::initTags(const TemplateInfo &templateInfo) {
           layout1->addWidget(b, 0, c);
           currentTemplate.layout->addRow(n, layout1);
         }
+        break;
+      case TagDisplay:
         break;
     }
 
@@ -621,10 +676,17 @@ void MainWindow::searchDocument() {
     return;
   auto &currentTemplate = i->second;
 
-  ui->tableWidget->clear();
-  ui->tableWidget->setColumnCount(1);
-  ui->tableWidget->setRowCount(0);
-  ui->tableWidget->hideColumn(0);
+  ui->treeWidget->clear();
+//  ui->treeWidget->setColumnCount(1);
+//  ui->treeWidget->setRowCount(0);
+  int columns = currentTemplate.tableHeads.size()+1;
+  ui->treeWidget->setColumnCount(columns);
+  ui->treeWidget->hideColumn(columns-1);
+  QList<QString> head;
+  for (auto &h:currentTemplate.tableHeads)
+    head << h;
+  ui->treeWidget->setHeaderLabels(head);
+//  ui->treeWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(tagName));
 
   try {
 
@@ -634,9 +696,10 @@ void MainWindow::searchDocument() {
 
     SearchDocument sd;
     sd.templateName(currentTemplate.name);
-    for (auto s:currentTemplate.searchTags)
+    for (auto s:currentTemplate.searchTags) {
       if (not s->evaluate(sd.tags, true))
         return;
+    }
 
     LOG(LM_INFO, "MAIN sent");
     int t1 = mrpc->elapsed.nsecsElapsed() / 1000000;
@@ -648,38 +711,82 @@ void MainWindow::searchDocument() {
 
     LOG(LM_INFO, "MAIN received");
 
-    std::map<std::string, int> columns;
     if (obj) {
       LOG(LM_INFO, "RESULT " << obj->to_string());
       if (auto res = dynamic_cast<SearchDocumentResult *>(obj)) {
+        std::map<std::string, QTreeWidgetItem *> groups;
         for(auto &i:res->tags) {
           LOG(LM_INFO, "Result: " << i.docId());
-          int row = ui->tableWidget->rowCount();
-          ui->tableWidget->setRowCount(row+1);
-          ui->tableWidget->setItem(row, 0, new QTableWidgetItem(QString::number(i.docId())));
+//          int row = ui->treeWidget->rowCount();
+//          ui->treeWidget->setRowCount(row+1);
+//          ui->treeWidget->setItem(row, 0, new QTableWidgetItem(QString::number(i.docId())));
+          std::string groupId;
+          int groupCol = -1;
+          QList<QString> line;
+          line.reserve(columns);
+          for (int c = 1; c < columns; c++)
+            line << "";
+          line << QString::number(i.docId());
           for (auto &j:i.tags) {
-            int col;
-            auto it = columns.find(j.name());
-            if (it == columns.end()) {
-              col = ui->tableWidget->columnCount();
-              ui->tableWidget->setColumnCount(col +1);
-              columns[j.name()] = col;
-              auto tagName = QString::fromUtf8(j.name().c_str());
-              ui->tableWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(tagName));
-              currentTemplate.foundTag(j.name());
-            } else
-              col = it->second;
+            auto info = currentTemplate.tableDisplay.find(j.name());
+            if (info == currentTemplate.tableDisplay.end()) {
+              LOG(LM_INFO, "UNUSED " << j.name() << "=" << j.content());
+              continue;
+            }
+            int col = currentTemplate.getDispPos(info->second.maskName);
+            if (info->second.groupBy) {
+              groupId = j.content();
+              groupCol = col;
+            }
+            if (col < 0)
+              continue;
+
+            currentTemplate.foundTag(j.name());// TODO ???
             LOG(LM_INFO, "T " << j.name() << "=" << j.content());
-            ui->tableWidget->setItem(row, col, new QTableWidgetItem(QString::fromUtf8(j.content().c_str())));
+            std::wstring value = mobs::to_wstring(j.content());
+            if (info->second.isDate) {
+              auto d = QDate::fromString(j.content().c_str(), Qt::ISODate);
+              LOG(LM_INFO, "DATE " << d.toString(Qt::DefaultLocaleShortDate).toStdString());
+              value = d.toString(Qt::DefaultLocaleShortDate).toStdWString();
+            } else if (not info->second.formatter.empty()) {
+              std::wstring result;
+              if (info->second.formatter.format(value, result))
+                value = result;
+            }
+            line.replace(col, QString::fromStdWString(value));
+//            ui->treeWidget->setItem(row, col, new QTableWidgetItem());
           }
+          QTreeWidgetItem *gp = nullptr;
+          LOG(LM_INFO, "GROUP " << groupId);
+          if (not groupId.empty()) {
+            auto it = groups.find(groupId);
+            if (it != groups.end())
+              gp = it->second;
+          }
+          if (gp) {
+            line.replace(groupCol, "");
+            gp->addChild(new QTreeWidgetItem(gp, line));
+            LOG(LM_INFO, "CHILD " << gp->childCount());
+          } else {
+            LOG(LM_INFO, "TOPLEVEL");
+            gp = new QTreeWidgetItem(ui->treeWidget, line);
+            gp->setChildIndicatorPolicy(QTreeWidgetItem::DontShowIndicatorWhenChildless);
+            if (not groupId.empty())
+              groups[groupId] = gp;
+            ui->treeWidget->addTopLevelItem(gp);
+          }
+
         }
       }
       else
         LOG(LM_INFO, "RESULT unused " << obj->to_string());
+
     }
+    for (int i = 0; i < columns-1; i++)
+      ui->treeWidget->resizeColumnToContents(i);
+
     mrpc->waitDone();
     LOG(LM_INFO, "MAIN ready");
-
     mrpc->close();
   } catch (std::exception &e) {
     LOG(LM_ERROR, "Exception in load " << e.what());
@@ -692,10 +799,14 @@ void MainWindow::searchDocument() {
 }
 
 void MainWindow::getDocument() {
+  if (auto item = ui->treeWidget->currentItem()) {
+    searchRowClicked(item, 0);
+  }
+
 //  loadDocument(1);
-  int row = ui->tableWidget->currentRow();
-  if (row >= 0)
-    searchRowClicked(row, 0);
+//  int row = ui->treeWidget->currentRow();
+//  if (row >= 0)
+//    searchRowClicked(row, 0);
 }
 
 
@@ -764,9 +875,18 @@ void MainWindow::loadDocument(int64_t doc)
 }
 
 void MainWindow::searchRowClicked(int row, int col) {
-  auto item = ui->tableWidget->item(row, 0);
+//  auto item = ui->treeWidget->item(row, 0);
+//  if (item) {
+//    int64_t doc = item->text().toLong();
+//    if (doc > 0)
+//      loadDocument(doc);
+//  }
+}
+
+void MainWindow::searchRowClicked(QTreeWidgetItem *item, int col) {
   if (item) {
-    int64_t doc = item->text().toLong();
+    int64_t doc = item->text(item->columnCount() -1).toLong();
+    LOG(LM_INFO, "CLICK " << doc);
     if (doc > 0)
       loadDocument(doc);
   }

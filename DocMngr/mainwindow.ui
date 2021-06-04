@@ -60,12 +60,18 @@
          <property name="text">
           <string>&gt;&gt;&gt;</string>
          </property>
+         <property name="autoDefault">
+          <bool>true</bool>
+         </property>
         </widget>
        </item>
        <item row="1" column="3" colspan="2">
         <widget class="QPushButton" name="pushButtonSearch">
          <property name="text">
           <string>search</string>
+         </property>
+         <property name="autoDefault">
+          <bool>true</bool>
          </property>
         </widget>
        </item>
@@ -124,7 +130,7 @@
         </spacer>
        </item>
        <item row="2" column="0" colspan="5">
-        <widget class="QTableWidget" name="tableWidget">
+        <widget class="QTreeWidget" name="treeWidget">
          <property name="editTriggers">
           <set>QAbstractItemView::AnyKeyPressed|QAbstractItemView::DoubleClicked</set>
          </property>
@@ -134,12 +140,14 @@
          <property name="selectionBehavior">
           <enum>QAbstractItemView::SelectRows</enum>
          </property>
-         <attribute name="horizontalHeaderStretchLastSection">
+         <property name="sortingEnabled">
           <bool>true</bool>
-         </attribute>
-         <attribute name="verticalHeaderVisible">
-          <bool>true</bool>
-         </attribute>
+         </property>
+         <column>
+          <property name="text">
+           <string notr="true">1</string>
+          </property>
+         </column>
         </widget>
        </item>
       </layout>
@@ -203,7 +211,7 @@
  <tabstops>
   <tabstop>pushButtonSave</tabstop>
   <tabstop>pushButtonSearch</tabstop>
-  <tabstop>tableWidget</tabstop>
+  <tabstop>treeWidget</tabstop>
   <tabstop>pushButtonGet</tabstop>
  </tabstops>
  <resources/>
@@ -231,8 +239,8 @@
    <slot>save()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>419</x>
-     <y>163</y>
+     <x>367</x>
+     <y>419</y>
     </hint>
     <hint type="destinationlabel">
      <x>618</x>
@@ -247,8 +255,8 @@
    <slot>getDocument()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>386</x>
-     <y>279</y>
+     <x>452</x>
+     <y>788</y>
     </hint>
     <hint type="destinationlabel">
      <x>322</x>
@@ -263,8 +271,8 @@
    <slot>searchDocument()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>322</x>
-     <y>213</y>
+     <x>452</x>
+     <y>419</y>
     </hint>
     <hint type="destinationlabel">
      <x>307</x>
@@ -273,18 +281,18 @@
    </hints>
   </connection>
   <connection>
-   <sender>tableWidget</sender>
-   <signal>cellDoubleClicked(int,int)</signal>
+   <sender>treeWidget</sender>
+   <signal>itemClicked(QTreeWidgetItem*,int)</signal>
    <receiver>MainWindow</receiver>
-   <slot>searchRowClicked(int,int)</slot>
+   <slot>searchRowClicked(QTreeWidgetItem*,int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>233</x>
-     <y>267</y>
+     <x>182</x>
+     <y>525</y>
     </hint>
     <hint type="destinationlabel">
-     <x>666</x>
-     <y>771</y>
+     <x>457</x>
+     <y>895</y>
     </hint>
    </hints>
   </connection>
@@ -296,5 +304,6 @@
   <slot>searchDocument()</slot>
   <slot>getDocument()</slot>
   <slot>searchRowClicked(int,int)</slot>
+  <slot>searchRowClicked(QTreeWidgetItem*,int)</slot>
  </slots>
 </ui>

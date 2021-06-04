@@ -111,7 +111,7 @@ public:
   std::string writeFile(std::istream &source, const DocInfo &info);
   void readFile(const std::string &file, std::ostream &dest);
 
-  void newDocument(DocInfo &doc, std::list<TagInfo>);
+  void newDocument(DocInfo &doc, const std::list<TagInfo>&);
   /// schreibt Dateinamen in DB
   void documentCreated(DocInfo &doc);
 

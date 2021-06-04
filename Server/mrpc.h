@@ -213,8 +213,8 @@ public:
 };
 
 
-MOBS_ENUM_DEF(TagType, TagEnumeration, TagDate, TagString, TagIdent);
-MOBS_ENUM_VAL(TagType, "enum",         "date",  "string",  "ident");
+MOBS_ENUM_DEF(TagType, TagEnumeration, TagDate, TagString, TagIdent, TagDisplay);
+MOBS_ENUM_VAL(TagType, "enum",         "date",  "string",  "ident",  "display");
 
 class TemplateTagInfo : virtual public mobs::ObjectBase
 {

@@ -32,6 +32,7 @@ class MainWindow;
 }
 
 class ActionTemplate;
+class QTreeWidgetItem;
 
 class MainWindow : public QMainWindow
 {
@@ -51,6 +52,7 @@ public slots:
   void getDocument();
   void searchDocument();
   void searchRowClicked(int row, int col);
+  void searchRowClicked(QTreeWidgetItem*,int);
   void getConfiguration();
 
 private:

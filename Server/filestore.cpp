@@ -148,7 +148,7 @@ Filestore *Filestore::store = nullptr;
 mobs::DatabaseManager Filestore::dbMgr;  // singleton, darf nur einmalig eingerichtet werden und muss bis zum letzten Verwenden einer Datenbank bestehen bleiben
 
 
-void Filestore::newDocument(DocInfo &doc, std::list<TagInfo> tags) {
+void Filestore::newDocument(DocInfo &doc, const std::list<TagInfo>& tags) {
   LOG(LM_INFO, "newDocument ");
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
   static DMGR_Counter cntr;
@@ -192,6 +192,7 @@ void Filestore::newDocument(DocInfo &doc, std::list<TagInfo> tags) {
     ti.creation(doc.creation);
     ti.creator(doc.creator);
     ti.insertTime(doc.insertTime);
+    LOG(LM_INFO, "SAVE " << ti.to_string());
     dbi.save(ti);
   }
 }
@@ -279,12 +280,14 @@ void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &pool, con
   else {
     // Tag bereits bekannt
     dbi.retrieve(tpool, cursor);
+#ifdef KEINE_MEHRFACHEN_TAGS
     for (auto &t:tags) {
       if (t.tagId == tpool.id()) {
         t.tagContent = content;
         return;
       }
     }
+#endif
   }
   tags.emplace_back(tpool.id(), content);
 }
@@ -391,9 +394,10 @@ void Filestore::tagSearch(const std::map<TagId, TagSearch> &searchList, std::lis
     return;
 
   std::list<uint64_t> l(docIds.begin(), docIds.end());
+  LOG(LM_INFO, "found " << l.size() << " documents");
 
   Q query2;
-  query2 << Q::AndBegin << ti.active.Qi("=", true) << ti.docId.QiIn(l)<< Q::AndEnd;
+  query2 << Q::AndBegin << ti.active.Qi("=", true) << ti.docId.QiIn(l) << Q::AndEnd;
 
   auto cursor = dbi.query(ti, query2);
   while (not cursor->eof()) {

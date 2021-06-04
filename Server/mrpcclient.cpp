@@ -106,6 +106,7 @@ public:
       // parsen abbrechen
       stop();
     } else if (auto *sess = dynamic_cast<CommandResult *>(obj)) {
+      lastRefId = sess->refId();
       if (sess->msg() != "OK") {
         if (sess->refId() > 0)
           LOG(LM_ERROR, "ERROR in RefId " << sess->refId() << ": " << sess->msg());
@@ -148,6 +149,7 @@ public:
   bool encrypted = false;
   fstream dumpStr;
   mobs::XmlWriter *xout = nullptr;
+  int64_t lastRefId = 0;
 
 };
 
@@ -300,7 +302,7 @@ void doRestore(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xm
   }
 };
 
-void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::XmlOut &xo) {
+void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::XmlOut &xo, size_t skip) {
   if (not xr.dumpStr.is_open())
     THROW("cannot open import file");
   LOG(LM_INFO, "READ INPUT");
@@ -308,25 +310,42 @@ void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xml
   vector<string> head;
   string templateName;
   char buf[1024];
+  char delim = '\t';
   xr.dumpStr.getline(buf, sizeof(buf));
-  stringstream ss(buf);
+  string tmp = buf;
+  size_t pos = tmp.find(u8"$template");
+  if (pos == string::npos)
+    THROW("no '$template' in header");
+  if (pos > 0)
+    delim = tmp[pos-1];
+  if (tmp[tmp.length() -1] == '\r')
+    tmp.resize(tmp.length() -1);
+  stringstream ss(tmp);
   while (not ss.eof()) {
-    ss.getline(buf, sizeof(buf), '\t');
+    ss.getline(buf, sizeof(buf), delim);
+    if (not buf[0]) {
+      if (ss.eof())
+        break;
+      strcpy(buf, "$ignore");
+    }
     head.emplace_back(buf);
+    LOG(LM_INFO, "HEAD " << buf);
   }
 
   int count = 0;
   while (not xr.dumpStr.eof()) {
+    xr.dumpStr.getline(buf, sizeof(buf));
+    string tmp = buf;
     SaveDocument sd;
     sd.refId(count +1); // line of input
-
-    xr.dumpStr.getline(buf, sizeof(buf));
-    stringstream ss(buf);
+    if (tmp[tmp.length() -1] == '\r')
+      tmp.resize(tmp.length() -1);
+    stringstream ss(tmp);
     auto iter = head.cbegin();
     while (not ss.eof()) {
       if (iter == head.end())
         break;
-      ss.getline(buf, sizeof(buf), '\t');
+      ss.getline(buf, sizeof(buf), delim);
 //      LOG(LM_INFO, "TOK " << *iter << " CONT " << buf);
       if (*iter == "$creation") {
         mobs::MTime t;
@@ -346,7 +365,13 @@ void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xml
       }
       iter++;
     }
-    string filename = "../../b1.pdf";
+    if (skip > 0) {
+      skip--;
+      continue;
+    }
+
+//    string filename = "../../b1.pdf";
+    string filename = "b1.pdf";
     size_t pos = filename.rfind('.');
     string ext;
     if (pos != string::npos)
@@ -405,7 +430,7 @@ void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xml
     data.close();
 
 
-    if (count > 2) {
+    while (count > xr.lastRefId + 4 ) {
       // Verzögert die Results auswerten, damit keine unnütze Wartezeit entsteht
       LOG(LM_INFO, "PARSE " << count);
       xr.parse();
@@ -417,7 +442,8 @@ void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xml
 }
 
 
-void client(const string &mode, const string& server, int port, const string &keystore, const string &keyname, const string &pass, const string &file) {
+void client(const string &mode, const string& server, int port, const string &keystore, const string &keyname, const string &pass,
+            const string &file, size_t skip) {
   try {
 //    if (sessionKey.size() != mobs::CryptBufAes::key_size()) {
 //      sessionKey.resize(mobs::CryptBufAes::key_size());
@@ -519,7 +545,7 @@ void client(const string &mode, const string& server, int port, const string &ke
         doRestore(con, xr, xf, xo);
       } else if (mode == "import") {
         xr.dumpStr.open(file, ios::in);
-        doImport(con, xr, xf, xo);
+        doImport(con, xr, xf, xo, skip);
       } else {
         Ping p;
         p.id(1);
@@ -631,10 +657,11 @@ int main(int argc, char* argv[]) {
   string server = "localhost";
   string filename = "admax.dump";
   int port = 4444;
+  size_t skip = 0;
 
   try {
     char ch;
-    while ((ch = getopt(argc, argv, "c:p:n:S:P:f:")) != -1) {
+    while ((ch = getopt(argc, argv, "c:p:n:S:P:f:s:")) != -1) {
       switch (ch) {
         case 'c':
           mode = optarg;
@@ -650,6 +677,9 @@ int main(int argc, char* argv[]) {
           break;
         case 'S':
           server = optarg;
+          break;
+        case 's':
+          skip = stoul(optarg);
           break;
         case 'f':
           filename = optarg;
@@ -680,7 +710,7 @@ int main(int argc, char* argv[]) {
     k.close();
 
 
-    client(mode, server, port, keystore, keyname, passphrase, filename);
+    client(mode, server, port, keystore, keyname, passphrase, filename, skip);
 
 
   }

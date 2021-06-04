@@ -91,6 +91,7 @@ public:
   bool isDate = false;
   bool isIdent = false;
   bool isTag = false; // kein Inhalt
+  bool doSearch = false; // create extra search tags
   set<string> token;
   mobs::StringFormatter formatter{};
 
@@ -516,7 +517,17 @@ void executeRequest(SearchDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
   if (not obj.templateName().empty()) {
     for (auto const &i:context.tInfo) {
       if (i.name() == obj.templateName()) {
-        pool = i.pool();
+        if (context.cacheTemplate != obj.templateName()) {
+          for (auto const &i:context.tInfo) {
+            if (i.name() == obj.templateName()) {
+              context.poolCache = i.pool();
+              context.tagInfoCache.clear();
+              for (auto &t:i.tags)
+                context.tagInfoCache[t.name()].addInfo(t);
+            }
+          }
+        }
+        pool = context.poolCache;
       }
     }
   }
@@ -526,7 +537,10 @@ void executeRequest(SearchDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
 
   map<TagId, string> tagNames;
   for (auto i:obj.tags) {
-    TagId id = store->findTag(pool, i.name());
+    auto f = context.tagInfoCache.find(i.name());
+    bool search = (f != context.tagInfoCache.end() and f->second.doSearch);
+
+    TagId id = store->findTag(pool, i.name() + string(search ? "$$" : ""));
     if (id) {
       tagInfos.emplace_back(id, i.content());
       tagNames[id] = i.name();
@@ -544,7 +558,22 @@ void executeRequest(SearchDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
           c.erase(0, 1);
         }
       }
-      tagSearch[id].tagOpList.emplace(c, o);
+      if (search) {
+        wstring n = mobs::to_wstring(c);
+        std::wstring::const_iterator it = n.begin();
+        while (it != n.end()) {
+          string result;
+          it = mobs::to7Up(it, n.end(), result);
+          LOG(LM_INFO, "NNN " << c << " -> " << result);
+          if (o == "=") {
+            o = "LIKE";
+            result += "%";
+          }
+          tagSearch[id].tagOpList.emplace(result, o);
+        }
+      }
+      else
+        tagSearch[id].tagOpList.emplace(c, o);
     }
     else
       LOG(LM_ERROR, "Tag " << i.name() << " does not exist");
@@ -618,6 +647,8 @@ void TagInfoCache::addInfo(const TemplateTagInfo &t) {
     case TagString:
       if (not t.regex().empty())
         formatter.insertPattern(mobs::to_wstring(t.regex()), mobs::to_wstring(t.format()));
+      else if (t.type() == TagString)
+        doSearch = true;
       break;
     case TagEnumeration:
       for (auto &i:t.enums)
@@ -627,6 +658,8 @@ void TagInfoCache::addInfo(const TemplateTagInfo &t) {
     case TagDate:
       isDate = true;
       formatter.insertPattern(L"([0-3]\\d).([01]\\d).([12]\\d{3})", L"%3%d-%2%02d-%1%02d");
+      break;
+    case TagDisplay:
       break;
   }
 }
@@ -688,8 +721,14 @@ void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
     pool = obj.pool();
 
 
-  if (pool.empty())
-    THROW("template " << obj.templateName() << " invalid");
+  if (pool.empty()) {
+    LOG(LM_ERROR, "template " << obj.templateName() << " invalid");
+    CommandResult doc;
+    doc.refId(obj.refId());
+    doc.msg("BAD TEMPLATE");
+    doc.traverse(xmlOut);
+    return;
+  }
 
   DocInfo docInfo;
   switch (obj.type()) {
@@ -714,8 +753,18 @@ void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
         if (not f->second.format(value)) {
           LOG(LM_ERROR, "format failed " << t.name());
           xi.attachmentError = STRSTR("BAD TAG " << t.name());
+        } else if (f->second.doSearch) {
+          wstring n = mobs::to_wstring(value);
+          std::wstring::const_iterator it = n.begin();
+          while (it != n.end()) {
+            string result;
+            it = mobs::to7Up(it, n.end(), result);
+            LOG(LM_INFO, "NNN " << value << " -> " << result);
+            store->insertTag(tagInfo, pool, t.name() + "$$", result);
+          }
         }
-      }
+      } else
+        LOG(LM_INFO, "tag w/o info " << t.name());
     }
     store->insertTag(tagInfo, pool, t.name(), value);
   }
