@@ -689,17 +689,16 @@ void MainWindow::searchDocument() {
 //  ui->treeWidget->setHorizontalHeaderItem(col, new QTableWidgetItem(tagName));
 
   try {
-
-    mrpc = new MrpcClient(this);
-    mrpc->waitReady(5);
-    LOG(LM_INFO, "MAIN connected");
-
     SearchDocument sd;
     sd.templateName(currentTemplate.name);
     for (auto s:currentTemplate.searchTags) {
       if (not s->evaluate(sd.tags, true))
         return;
     }
+
+    mrpc = new MrpcClient(this);
+    mrpc->waitReady(5);
+    LOG(LM_INFO, "MAIN connected");
 
     LOG(LM_INFO, "MAIN sent");
     int t1 = mrpc->elapsed.nsecsElapsed() / 1000000;

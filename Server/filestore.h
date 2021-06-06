@@ -24,6 +24,8 @@
 #include <vector>
 #include <iostream>
 #include <utility>
+#include <mobs/converter.h>
+#include <set>
 #include "mobs/dbifc.h"
 #include "mobs/mchrono.h"
 #include "mrpc.h"
@@ -70,8 +72,10 @@ public:
 
 class TagSearch {
 public:
-  TagSearch(TagId id = 0) : tagId(id) {}
-  TagId tagId;
+//  TagSearch(TagId id = 0) : tagId(id) {}
+//  TagId tagId;
+  std::string tagName;
+  bool primary = false;
   std::multimap<std::string, std::string> tagOpList{};
 };
 
@@ -82,22 +86,22 @@ public:
   DocId docId{};
 };
 
-//class TagSearchInfo {
-//public:
-//  enum Flags { Madd = 0x000, /// add all matches from db to stock
-//               Msub = 0x200, /// remove all matches
-//               MCaseSensitive = 0,
-//               MCaseInsensitive = 0x1000 };
-//  enum Mode { Many, Mequal, MnotEqual, MbeginsWith, MnotBeginsWith, Mcontains, MnotContains,
-//               MRegExp, MnotRegexp, Mgt, Mge, Mlt, Mle };
-//
-//  TagSearchInfo(int id = 0, Mode m = Many, std::string content = "", int flags = Madd) :
-//          tagId(id), mode(m), tagContent(std::move(content)), flag(flags) {}
-//  TagId tagId;
-//  Mode mode;
-//  std::string tagContent;
-//  int flag;
-//};
+class BucketPool {
+public:
+  class BucketTag {
+  public:
+    std::string name;
+    mobs::StringFormatter formatter{};
+    int prio;
+  };
+
+  int getToken(const std::string &name, const std::string &content, std::string &token);
+  int getTokenList(const TagSearch &tagSearch, TagSearch &tagResult);
+  std::string pool;
+  std::map<std::string, BucketTag> elements;
+};
+
+
 
 
 
@@ -119,13 +123,18 @@ public:
 
   /// Tag mit name und Inhalt in Liste eintragen
   void insertTag(std::list<TagInfo> &tags, const std::string &pool, const std::string &tagName,
-                 const std::string &content);
-  TagId findTag(const std::string &pool, const std::string &tagName);
+                 const std::string &content, int bucket = 0);
+  TagId findTag(const std::string &pool, const std::string &tagName, int bucket = 0);
   std::string tagName(TagId id);
 
-//  void tagSearch(const std::list<TagSearchInfo> &searchList, std::list<SearchResult> &result);
+  int findBucket(const std::string &pool, const std::vector<std::string> &bucketToken);
+
+  void bucketSearch(const std::string &pool, const std::map<int, TagSearch> &searchList, std::set<int> &result);
+
+  //  void tagSearch(const std::list<TagSearchInfo> &searchList, std::list<SearchResult> &result);
   /// alle Bedingungen oder-verknüpfen
-  void tagSearch(const std::map<TagId, TagSearch> &searchList, std::list<SearchResult> &result);
+  void tagSearch(const std::string &pool, const std::map<std::string, TagSearch> &searchList, const std::set<int> &buckets,
+                 std::list<SearchResult> &result);
   /// tag info zu einem Dokument
   void tagInfo(DocId id, std::list<SearchResult> &result, DocInfo &info);
   /// document indo
@@ -134,6 +143,8 @@ public:
   void allDocs(std::vector<DocId> &result);
 
   void loadTemplates(std::list<TemplateInfo> &templates);
+
+  void loadBuckets(std::map<std::string, BucketPool> &buckets);
 
   void loadTemplatesFromFile(const std::string &filename);
 

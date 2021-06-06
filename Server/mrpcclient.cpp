@@ -340,6 +340,7 @@ void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xml
     sd.refId(count +1); // line of input
     if (tmp[tmp.length() -1] == '\r')
       tmp.resize(tmp.length() -1);
+    string filename;
     stringstream ss(tmp);
     auto iter = head.cbegin();
     while (not ss.eof()) {
@@ -357,7 +358,7 @@ void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xml
         if (buf[0])
           templateName = buf;
       } else if (*iter == "$filename") {
-        sd.name(buf);
+        filename = buf;
       } else if (not iter->empty() and (*iter)[0] != '$') {
         auto &t = sd.tags[mobs::MemBaseVector::nextpos];
         t.name(*iter);
@@ -370,8 +371,6 @@ void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xml
       continue;
     }
 
-//    string filename = "../../b1.pdf";
-    string filename = "b1.pdf";
     size_t pos = filename.rfind('.');
     string ext;
     if (pos != string::npos)
@@ -386,6 +385,11 @@ void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xml
       LOG(LM_ERROR, "invalid file type " << filename);
       continue;
     }
+    pos = filename.rfind('/');
+    if (pos == string::npos)
+      sd.name(filename);
+    else
+      sd.name(filename.substr(pos+1));
 
     if (templateName.empty()) {
       LOG(LM_ERROR, "template name missing");

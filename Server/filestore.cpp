@@ -56,30 +56,21 @@ public:
  */
 class DMGR_Counter : virtual public mobs::ObjectBase {
 public:
-  enum Cntr { CntrDocument = 1, CntrTagPool  = 2, CntrTag  = 3 };
+  enum Cntr { CntrDocument = 1, CntrTagPool  = 2, CntrTag  = 3, CntrBucketInfo = 4 };
   ObjInit(DMGR_Counter);
   MemVar(int, id, KEYELEMENT1);
   MemVar(int64_t, counter, VERSIONFIELD);
 };
 
-//class DMGR_TagTransformer : virtual public mobs::ObjectBase {
-//public:
-//  ObjInit(DMGR_TagTransformer);
-//  MemVar(std::string, regex);
-//  MemVar(std::string, format);
-//};
 
-class DMGR_TagPool : virtual public mobs::ObjectBase {
+class DMGR_TagInfo : virtual public mobs::ObjectBase {
 public:
-  ObjInit(DMGR_TagPool);
+  ObjInit(DMGR_TagInfo);
   MemVar(int, id, KEYELEMENT1);
   MemVar(int64_t, version, VERSIONFIELD);
-  MemMobsEnumVar(TagType, tagType); // TagEnumeration, TagDate, TagString, TagIdent);
   MemVar(std::string, name);
-  MemVar(std::string, pool);  // unique(name, pool)
-//  MemVector(DMGR_TagTransformer, transformer); // T_String T_Number
-//  MemVarVector(std::string, enumeration, DBJSON); // T_Enumeration wenn leer, dann nur Tag ohne Inhalt
-//  MemVar(std::string, searchTag);   // weiteres Tag mit dem Suchinhalt (Methode steht in dessem tagType (> 100)
+  MemVar(std::string, pool);  // unique index (name, pool, bucket)
+  MemVar(int, bucket); // ein Tag-Pool kann in mehrere Buckets aufgeteilt sein
   MemVar(int, maxSize);
 };
 
@@ -90,11 +81,33 @@ public:
 
 };
 
-
-
-class DMGR_TagInfo : virtual public mobs::ObjectBase {
+class DMGR_BucketPool : virtual public mobs::ObjectBase {
 public:
-  ObjInit(DMGR_TagInfo);
+  ObjInit(DMGR_BucketPool);
+  MemVar(std::string, pool, KEYELEMENT1);
+  MemVar(std::string, name, KEYELEMENT2);
+  MemVar(int64_t, version, VERSIONFIELD);
+  MemVar(int, prio);  // 0 = uniq->alles in einen Bucket
+  MemVar(std::string, regex);
+  MemVar(std::string, format);
+};
+
+class DMGR_BucketInfo : virtual public mobs::ObjectBase {
+public:
+  ObjInit(DMGR_BucketInfo);  // index (pool, tok1, tok2, tok3)
+  MemVar(int, id, KEYELEMENT1);
+//  MemVar(int64_t, version, VERSIONFIELD);
+  MemVar(std::string, pool);
+  MemVar(std::string, tok1); // BucketToken prio=1
+  MemVar(std::string, tok2); // BucketToken prio=2
+  MemVar(std::string, tok3); // BucketToken prio=3
+};
+
+
+
+class DMGR_Tag : virtual public mobs::ObjectBase {
+public:
+  ObjInit(DMGR_Tag); // index (docId), index(tagId, active, content)
   MemVar(int64_t, id, KEYELEMENT1);
   //MemVar(int64_t, version, VERSIONFIELD);
   MemVar(uint64_t, docId);
@@ -131,15 +144,17 @@ Filestore::Filestore(const std::string &basedir)  : base(basedir) {
   dbMgr.addConnection("docsrv", mobs::ConnectionInformation(db, dbname));
   DMGR_Counter c;
   DMGR_Document d;
-  DMGR_TagInfo t;
-  DMGR_TagPool p;
+  DMGR_Tag t;
+  DMGR_TagInfo p;
   DMGR_TemplatePool tp;
+  DMGR_BucketPool bp;
   auto dbi = dbMgr.getDbIfc("docsrv");
   dbi.structure(c);
   dbi.structure(d);
   dbi.structure(t);
   dbi.structure(p);
   dbi.structure(tp);
+  dbi.structure(bp);
 
 
 }
@@ -183,7 +198,7 @@ void Filestore::newDocument(DocInfo &doc, const std::list<TagInfo>& tags) {
       dbi.load(cntr);
     }
     dbi.save(cntr);
-    DMGR_TagInfo ti;
+    DMGR_Tag ti;
     ti.id(cntr.counter());
     ti.active(true);
     ti.tagId(t.tagId);
@@ -259,13 +274,55 @@ void Filestore::readFile(const std::string &name, std::ostream &dest) {
   }
 }
 
-void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &pool, const std::string &tagName,
-                          const std::string &content) {
-  LOG(LM_INFO, "insertTag " << tagName << " " << content);
+
+int Filestore::findBucket(const std::string &pool, const std::vector<std::string> &bucketToken) {
+  std::string s;
+  std::for_each(bucketToken.begin(), bucketToken.end(), [&s](const std::string &i){ s += i; s += " "; });
+  LOG(LM_INFO, "findBucket " << s );
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
-  DMGR_TagPool tpool;
+  DMGR_BucketInfo binfo;
+  binfo.pool(pool);
+  switch (bucketToken.size()) {
+    case 0:
+      return 0;
+    case 3:
+      binfo.tok3(bucketToken[2]);
+    case 2:
+      binfo.tok2(bucketToken[1]);
+    case 1:
+      binfo.tok1(bucketToken[0]);
+      break;
+    default:
+      THROW("findBucket: to many tokens");
+  }
+  auto cursor = dbi.qbe(binfo);
+  if (cursor->eof()) {
+    // neuen Tag anlegen
+    DMGR_Counter cntr;
+    cntr.id(DMGR_Counter::CntrBucketInfo);
+    dbi.load(cntr);
+    dbi.save(cntr);
+    binfo.id(cntr.counter());
+    if (binfo.id() == 0)
+      THROW("BucketId should not be 0");
+    dbi.save(binfo);
+  }
+  else {
+    // Tag bereits bekannt
+    dbi.retrieve(binfo, cursor);
+  }
+  return binfo.id();
+}
+
+
+void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &pool, const std::string &tagName,
+                          const std::string &content, int bucket) {
+  LOG(LM_INFO, "insertTag " << tagName << "[" << bucket << "] " << content);
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  DMGR_TagInfo tpool;
   tpool.pool(pool);
   tpool.name(tagName);
+  tpool.bucket(bucket);
   auto cursor = dbi.qbe(tpool);
   if (cursor->eof()) {
     // neuen Tag anlegen
@@ -274,7 +331,6 @@ void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &pool, con
     dbi.load(cntr);
     dbi.save(cntr);
     tpool.id(cntr.counter());
-//    tpool.tagType(TagPool::T_String); TODO
     dbi.save(tpool);
   }
   else {
@@ -293,12 +349,13 @@ void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &pool, con
 }
 
 
-TagId Filestore::findTag(const std::string &pool, const std::string &tagName) {
+TagId Filestore::findTag(const std::string &pool, const std::string &tagName, int bucket) {
   LOG(LM_INFO, "findTag " << tagName);
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
-  DMGR_TagPool tpool;
+  DMGR_TagInfo tpool;
   tpool.pool(pool);
   tpool.name(tagName);
+  tpool.bucket(bucket);
   auto cursor = dbi.qbe(tpool);
   if (cursor->eof()) {
     return 0;
@@ -314,7 +371,7 @@ TagId Filestore::findTag(const std::string &pool, const std::string &tagName) {
 std::string Filestore::tagName(TagId id) {
   LOG(LM_INFO, "tagName " << id);
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
-  DMGR_TagPool tpool;
+  DMGR_TagInfo tpool;
   tpool.id(id);
   auto cursor = dbi.qbe(tpool);
   if (cursor->eof()) {
@@ -329,24 +386,159 @@ std::string Filestore::tagName(TagId id) {
 }
 
 
-void Filestore::tagSearch(const std::map<TagId, TagSearch> &searchList, std::list<SearchResult> &result) {
+void Filestore::tagSearch(const std::string &pool, const std::map<std::string, TagSearch> &searchList, const std::set<int> &buckets,
+                          std::list<SearchResult> &result) {
   LOG(LM_INFO, "search ");
   result.clear();
 
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
-  DMGR_TagInfo ti;
+  DMGR_Tag ti;
 
   using Q = mobs::QueryGenerator;    // Erleichtert die Tipp-Arbeit
-  std::set<uint64_t> docIds;
-  bool start = true;
 
-  // Hier den besten aus der Filter-Liste aussuchen, keine OR-Verknüpfung
+  std::list<uint64_t> docList;
+  std::set<uint64_t> docIdsPrim; // Ids der Primary muss mit allen anderen Buckets eine Schnittmenge bilden
+  for (auto bucket:buckets) {
+    LOG(LM_INFO, "SEARCH BUCKET " << bucket);
+    // pro SearchList-Eintrag (tag) eine Query und Schnittmenge aus Ergebnissen bilden
+    std::set<uint64_t> docIds;
+    bool start = true;
+    bool startPrim = true;
+    for (auto &i:searchList) {
+      if (i.second.primary and bucket != 0) // only 0 allowed
+        continue;
+      TagId id = findTag(pool, i.second.tagName, bucket);
+      if (id <= 0) {
+        LOG(LM_INFO, "no data for " << i.second.tagName << "[" << bucket << "] ");
+        if (bucket == 0 and not i.second.primary and buckets.size() > 1)
+          continue;
+        break;
+      }
+//      if (i.first.length() > 3 and i.first.[i.first.length()-1] == '$')
+//        dontReturn.insert(id);
+      LOG(LM_INFO, "SEARCH: " << i.second.tagName << "[" << bucket << "] " << id << " prim=" << i.second.primary);
+      std::set<uint64_t> docIdsTmp;
+      std::set<uint64_t> docIdsPrimTmp;
+      if (start and bucket and not docIdsPrim.empty()) { // bei buckets > 0 mit Primary vorinitialisieren
+        docIdsTmp = docIdsPrim;
+        start = false;
+      } else
+        docIdsTmp.swap(docIds);
+      if (i.second.primary)
+        docIdsPrimTmp.swap(docIdsPrim);
+      Q query;
+      query << Q::AndBegin << ti.active.Qi("=", true) << ti.tagId.Qi("=", id);
+      if (not i.second.tagOpList.empty()) {
+        query << Q::OrBegin;
+        // Ranges erkennen  >a <b
+        std::string lastOp; // nur > oder >=
+        const std::string *lastCont = nullptr;
+        for (auto &s:i.second.tagOpList) {
+          if (s.second == ">" or s.second == ">=") {
+            if (lastOp.empty()) {
+              lastCont = &s.first;
+              lastOp = s.second;
+              continue;
+            } else if (s.second == ">=" and *lastCont == s.first) {
+              lastOp = s.second;
+              continue;
+            } // else ignore, makes no sense
+          } else if (not lastOp.empty() and (s.second == "<" or s.second == "<=")) {
+            query << Q::AndBegin << ti.content.Qi(lastOp.c_str(), *lastCont) << ti.content.Qi(s.second.c_str(), s.first)
+                  << Q::AndEnd;
+            lastOp = "";
+            continue;
+          }
+          query << ti.content.Qi(s.second.c_str(), s.first);
+        }
+        if (not lastOp.empty()) {
+          query << ti.content.Qi(lastOp.c_str(), *lastCont);
+        }
+        query << Q::OrEnd;
+      }
+      // Query auf bereits bekannte reduzieren
+      if (not start and not i.second.primary and docIdsTmp.size() < 100) {
+        std::list<uint64_t> l(docIdsTmp.begin(), docIdsTmp.end());
+        query << ti.docId.QiIn(l);
+      }
+      query << Q::AndEnd;
+
+      auto cursor = dbi.query(ti, query);
+      while (not cursor->eof()) {
+        dbi.retrieve(ti, cursor);
+        LOG(LM_INFO, "Z " << ti.to_string());
+        // Schnittmenge aller sets bilden
+        if (start or docIdsTmp.find(ti.docId()) != docIdsTmp.end())
+          docIds.emplace(ti.docId());
+        if (i.second.primary) { // only bucket 0
+          if (startPrim or docIdsPrimTmp.find(ti.docId()) != docIdsPrimTmp.end())
+            docIdsPrim.emplace(ti.docId());
+        }
+        cursor->next();
+      }
+      start = false;
+      LOG(LM_INFO, "QSIZE " << docIds.size() << " " << cursor->pos() << " " << docIdsPrim.size());
+      if (i.second.primary) {
+        startPrim = false;
+        if (docIdsPrim.empty()) {
+          LOG(LM_INFO, "empty primary search " << i.first);
+          return;
+        }
+      }
+      if (docIds.empty()) {
+        LOG(LM_INFO, "empty bucket result at " << i.first);
+        break;
+      }
+    }
+    if (bucket != 0 or buckets.size() == 1)
+      docList.insert(docList.end(), docIds.begin(), docIds.end());
+  }
+
+  if (docList.empty())
+    return;
+
+//  std::list<uint64_t> l(docIds.begin(), docIds.end());
+  LOG(LM_INFO, "found " << docList.size() << " documents");
+
+  Q query2;
+  query2 << Q::AndBegin << ti.active.Qi("=", true) << ti.docId.QiIn(docList) << Q::AndEnd;
+
+  auto cursor = dbi.query(ti, query2);
+  while (not cursor->eof()) {
+    dbi.retrieve(ti, cursor);
+    SearchResult r;
+    r.tagId = ti.tagId();
+    r.tagContent = ti.content();
+    r.docId = ti.docId();
+    result.emplace_back(r);
+    cursor->next();
+  }
+
+}
+
+void
+Filestore::bucketSearch(const std::string &pool, const std::map<int, TagSearch> &searchList, std::set<int> &result) {
+  LOG(LM_INFO, "search ");
+  result.clear();
+
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  DMGR_Tag ti;
+
+  using Q = mobs::QueryGenerator;    // Erleichtert die Tipp-Arbeit
+  DMGR_BucketInfo binfo;
+  Q query;
+  query << Q::AndBegin << binfo.pool.QiEq(pool);
+  // Für die einzelnen Zeilen Queries bilden und gemeinsam ver-und-en
   for (auto &i:searchList) {
     LOG(LM_INFO, "SEARCH: " << i.first);
-    std::set<uint64_t> docIdsTmp;
-    docIdsTmp.swap(docIds);
-    Q query;
-    query << Q::AndBegin << ti.active.Qi("=", true) << ti.tagId.Qi("=", i.first);
+    MemVarType(std::string) *tokVar = nullptr;
+    switch (i.first) {
+      case 1: tokVar = &binfo.tok1; break;
+      case 2: tokVar = &binfo.tok2; break;
+      case 3: tokVar = &binfo.tok3; break;
+      default:
+        THROW("invalid bucket prio");
+    }
     if (not i.second.tagOpList.empty()) {
       query <<  Q::OrBegin;
       // Ranges erkennen  >a <b
@@ -364,51 +556,28 @@ void Filestore::tagSearch(const std::map<TagId, TagSearch> &searchList, std::lis
           } // else ignore, makes no sense
         }
         else if (not lastOp.empty() and (s.second == "<" or s.second == "<=")) {
-          query << Q::AndBegin << ti.content.Qi(lastOp.c_str(), *lastCont) << ti.content.Qi(s.second.c_str(), s.first) << Q::AndEnd;
+          query << Q::AndBegin << tokVar->Qi(lastOp.c_str(), *lastCont) << tokVar->Qi(s.second.c_str(), s.first) << Q::AndEnd;
           lastOp = "";
           continue;
         }
-        query << ti.content.Qi(s.second.c_str(), s.first);
+        query << tokVar->Qi(s.second.c_str(), s.first);
       }
       if (not lastOp.empty()) {
-        query << ti.content.Qi(lastOp.c_str(), *lastCont);
+        query << tokVar->Qi(lastOp.c_str(), *lastCont);
       }
       query <<  Q::OrEnd;
     }
-    query <<  Q::AndEnd;
-
-    auto cursor = dbi.query(ti, query);
-    while (not cursor->eof()) {
-      dbi.retrieve(ti, cursor);
-      LOG(LM_INFO, "Z " << ti.to_string());
-      // Schnittmenge aller sets bilden
-      if (start or docIdsTmp.find(ti.docId()) != docIdsTmp.end())
-        docIds.emplace(ti.docId());
-      cursor->next();
-    }
-    start = false;
   }
+  query <<  Q::AndEnd;
 
-
-  if (docIds.empty())
-    return;
-
-  std::list<uint64_t> l(docIds.begin(), docIds.end());
-  LOG(LM_INFO, "found " << l.size() << " documents");
-
-  Q query2;
-  query2 << Q::AndBegin << ti.active.Qi("=", true) << ti.docId.QiIn(l) << Q::AndEnd;
-
-  auto cursor = dbi.query(ti, query2);
+  auto cursor = dbi.query(binfo, query);
   while (not cursor->eof()) {
-    dbi.retrieve(ti, cursor);
-    SearchResult r;
-    r.tagId = ti.tagId();
-    r.tagContent = ti.content();
-    r.docId = ti.docId();
-    result.emplace_back(r);
+    dbi.retrieve(binfo, cursor);
+    LOG(LM_INFO, "Z " << binfo.to_string());
+    result.insert(binfo.id());
     cursor->next();
   }
+
 
 }
 
@@ -455,9 +624,9 @@ void Filestore::tagInfo(DocId id, std::list<SearchResult> &result, DocInfo &doc)
   doc.creator = dbd.creator();
   doc.creationInfo = dbd.creationInfo();
 
-  DMGR_TagInfo ti;
+  DMGR_Tag ti;
 
-  using Q = mobs::QueryGenerator;    // Erleichtert die Tipp-Arbeit
+  using Q = mobs::QueryGenerator;
   Q query2;
   query2 << Q::AndBegin << ti.active.QiEq(true) << ti.docId.QiEq(id) << Q::AndEnd;
 
@@ -481,7 +650,7 @@ void Filestore::allDocs(std::vector<DocId> &result) {
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
 
   DMGR_Document dbd;
-  using Q = mobs::QueryGenerator;    // Erleichtert die Tipp-Arbeit
+  using Q = mobs::QueryGenerator;
   Q query;
   for (auto cursor = dbi.query(dbd, query); not cursor->eof(); cursor->next()) {
     dbi.retrieve(dbd, cursor);
@@ -500,9 +669,27 @@ void Filestore::loadTemplates(std::list<TemplateInfo> &templates) {
     templates.emplace_back();
     templates.back().carelessCopy(tp);
   }
-
-  return;
 }
+
+void Filestore::loadBuckets(std::map<std::string, BucketPool> &buckets) {
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  using Q = mobs::QueryGenerator;
+  Q query;
+  DMGR_BucketPool bp;
+  for (auto cursor = dbi.query(bp, query);not cursor->eof(); cursor->next()) {
+    dbi.retrieve(bp, cursor);
+    LOG(LM_INFO, bp.to_string());
+    auto &b = buckets[bp.pool()];
+    b.pool = bp.pool();
+    auto &e = b.elements[bp.name()];
+    e.prio = bp.prio();
+    if (e.prio and not bp.regex().empty() and not bp.format().empty())
+      e.formatter.insertPattern(mobs::to_wstring(bp.regex()), mobs::to_wstring(bp.format()));
+  }
+}
+
+
+
 
 void Filestore::loadTemplatesFromFile(const std::string &filename) {
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
@@ -520,148 +707,73 @@ void Filestore::loadTemplatesFromFile(const std::string &filename) {
   LOG(LM_INFO, cr.to_string());
 
   for (auto &t:cr.templates) {
-    DMGR_TemplatePool tp;
-    tp.name(t.name());
-    tp.pool(t.pool());
-    if (dbi.load(tp)) {
-      tp.clearModified();
-    }
-    tp.carelessCopy(t);
-    if (tp.isModified())
-      dbi.save(tp);
-    else
-      LOG(LM_INFO, "nothing changed");
-
-  }
-
-}
-
-
-
-#if 0
-void Filestore::tagSearch(const std::list<TagSearchInfo> &searchList, std::list<SearchResult> &result) {
-
-  result.clear();
-
-  DMGR_TagInfo ti;
-
-  using Q = mobs::QueryGenerator;    // Erleichtert die Tipp-Arbeit
-  Q query;
-//  Q << Q::AndBegin << kunde.Nr.Qi("!=", 7)
-//    << Q::OrBegin << Q::Not << kunde.Ort.Qi("LIKE", "%Nor_heim") << kunde.Ort.Qi("=", "Nordheim") << Q::OrEnd
-//    << kunde.eintritt.QiBetween("2020-01-01", "2020-06-30") << Q::Not << kunde.status.QiIn({7,8,3}) << Q::AndEnd;
-// { "=", "<", "<=", ">", ">=", "<>", " LIKE " };
-  TagId currentTag = 0;
-  auto it1 = searchList.end();
-  auto it2 = searchList.end();
-  for (auto it = searchList.begin(); it != searchList.end(); it++) {
-    if (not currentTag and it->flag & TagSearchInfo::Msub)
-      continue;
-    if (not currentTag) {
-      currentTag = it->tagId;
-      it1 = it;
-    } else if (currentTag != it->tagId) {
-      it2 = it;
-      break;
-    }
-  }
-  // von i1 bis i2 Datenbank-Abfrage, von it2 bis end() filtern
-  int cnt = 0;
-  std::list<std::string> cl;
-  for (auto it = it1; it != it2; ) {
-    if ((it->flag & TagSearchInfo::Madd) and it->mode == TagSearchInfo::Mequal) {
-      cl.emplace_back(it->tagContent);
-      it++;
-      if (it != it2 and (it->flag & TagSearchInfo::Madd) and it->mode == TagSearchInfo::Mequal)
-        continue;
-      if (it != it2 and (it->flag & TagSearchInfo::Madd))
-         query << Q::OrBegin;
-      else
-        query << Q::AndBegin;
-      if (cl.size() > 1)
-        query << ti.content.QiIn(cl);
-      else
-        query << ti.content.Qi("=", cl.front());
-      continue;
-    }
-
-    if ((it->flag & TagSearchInfo::Msub)) {
-      auto mode = it->mode;
-      std::string content = it->tagContent;
-      it++;
-//      if (it != it2 and (it->flag & TagSearchInfo::Madd))
-//        query << Q::OrBegin;
-//      else
-//        query << Q::AndBegin;
-      std::string op;
-      switch (mode) { // { "=", "<", "<=", ">", ">=", "<>", " LIKE " };
-        case TagSearchInfo::Mequal: op = "<>"; break;
-        case TagSearchInfo::MnotEqual: op = "="; break;
-        case TagSearchInfo::Mle: op = ">"; break;
-        case TagSearchInfo::Mlt: op = ">="; break;
-        case TagSearchInfo::Mge: op = "<"; break;
-        case TagSearchInfo::Mgt: op = "<="; break;
-        case TagSearchInfo::MnotBeginsWith: query << ti.content.Qi("LIKE", content + "%"); break;
-        case TagSearchInfo::MnotContains: query << ti.content.Qi("LIKE", std::string("%") + content + "%"); break;
-        case TagSearchInfo::MbeginsWith: query << Q::Not << ti.content.Qi("LIKE", content+ "%"); break;
-        case TagSearchInfo::Mcontains: query << Q::Not << ti.content.Qi("LIKE", std::string("%") + content + "%"); break;
-        case TagSearchInfo::Many:
-        case TagSearchInfo::MnotRegexp:
-        case TagSearchInfo::MRegExp:
-          THROW("Not implemented");
-      }
-      if (not op.empty())
-        query << ti.content.Qi(op, content);
-    }   if ((it->flag & TagSearchInfo::Madd)) {
-      auto mode = it->mode;
-      std::string content = it->tagContent;
-      it++;
-      if (it != it2 and (it->flag & TagSearchInfo::Madd))
-        query << Q::OrBegin;
-      else
-        query << Q::AndBegin;
-      std::string op;
-      switch (mode) { // { "=", "<", "<=", ">", ">=", "<>", " LIKE " };
-        case TagSearchInfo::Mequal: op = "="; break;
-        case TagSearchInfo::MnotEqual: op = "<>"; break;
-        case TagSearchInfo::Mle: op = "<="; break;
-        case TagSearchInfo::Mlt: op = "<"; break;
-        case TagSearchInfo::Mge: op = ">="; break;
-        case TagSearchInfo::Mgt: op = ">"; break;
-        case TagSearchInfo::MbeginsWith: query << ti.content.Qi("LIKE", content + "%"); break;
-        case TagSearchInfo::Mcontains: query << ti.content.Qi("LIKE", std::string("%") + content + "%"); break;
-        case TagSearchInfo::MnotBeginsWith: query << Q::Not << ti.content.Qi("LIKE", content+ "%"); break;
-        case TagSearchInfo::MnotContains: query << Q::Not << ti.content.Qi("LIKE", std::string("%") + content + "%"); break;
-        case TagSearchInfo::Many:
-        case TagSearchInfo::MnotRegexp:
-        case TagSearchInfo::MRegExp:
-          THROW("Not implemented");
-      }
-      if (not op.empty())
-        query << ti.content.Qi(op, content);
-    }
-
-
-
-      and it->mode == TagSearchInfo::Mequal) {
-
-
-
-
-
-      for (auto it0 = std::next(it); ; it0++) {
-        if (it0 == it2 or not (it0->flag & TagSearchInfo::Madd) or it0->mode != TagSearchInfo::Mequal) {
-          if (std::distance(it, it0) == 1) {
-            query << ti.content.Qi("=", it->tagContent);
-          } else {}
+    if (t.type() == TemplateBucket) {
+      int c = 1;
+      for (auto &i:t.tags) {
+        DMGR_BucketPool bp;
+        bp.pool(t.pool());
+        bp.name(i.name());
+        if (dbi.load(bp)) {
+          bp.clearModified();
         }
+        bp.regex(i.regex());
+        bp.format(i.format());
+        if (i.type() == TagIdent)
+          bp.prio(0);
+        else
+          bp.prio(c++);
+        if (bp.isModified())
+          dbi.save(bp);
+        else
+          LOG(LM_INFO, "bucket nothing changed");
       }
-      tq << ti
+    } else {
+      DMGR_TemplatePool tp;
+      tp.name(t.name());
+      tp.pool(t.pool());
+      if (dbi.load(tp)) {
+        tp.clearModified();
+      }
+      tp.carelessCopy(t);
+      if (tp.isModified())
+        dbi.save(tp);
+      else
+        LOG(LM_INFO, "template nothing changed");
     }
-
   }
 
-
 }
-#endif
+
+int BucketPool::getTokenList(const TagSearch &tagSearch, TagSearch &tagResult) {
+  auto it = elements.find(tagSearch.tagName);
+  if (it == elements.end())
+    return -1;
+  tagResult.tagOpList.clear();
+  if (it->second.prio) {
+    for (auto &i:tagSearch.tagOpList) {
+      std::wstring result;
+      if (it->second.formatter.empty())
+        tagResult.tagOpList.emplace(i.first, i.second);
+      else if (it->second.formatter.format(mobs::to_wstring(i.first), result))
+        tagResult.tagOpList.emplace(mobs::to_string(result), i.second);
+    }
+  }
+  return it->second.prio;
+}
+
+int BucketPool::getToken(const std::string &name, const std::string &content, std::string &token) {
+  auto it = elements.find(name);
+  if (it == elements.end())
+    return -1;
+  token.clear();
+  if (it->second.prio) {
+    std::wstring result;
+    if (it->second.formatter.empty())
+      token = content;
+    else if (it->second.formatter.format(mobs::to_wstring(content), result))
+      token = mobs::to_string(result);
+  }
+  return it->second.prio;
+}
+
 

@@ -149,8 +149,8 @@ public:
   ObjInit(GetDocument);
 
   MemVar(uint64_t, docId);
-  MemVar(std::string, type);  // TODO sinvoll?
-  MemVar(bool, allowAttach);  // grpße Dokumente dürfen als Attachment gesendet werden
+  MemVar(std::string, type);  // TODO sinvoll? evtl. Typ-Konvertierung oder einzelne Seiten
+  MemVar(bool, allowAttach);  // große Dokumente dürfen als Attachment gesendet werden
   MemVar(bool, allInfos);     // alle vorhandenen Infos senden
 };
 
@@ -226,13 +226,14 @@ public:
   MemVar(std::string, maskText);
   MemVar(std::string, regex);
   MemVar(std::string, format);
-  MemVarVector(std::string, enums); // TODO maskEnums
+  MemVarVector(std::string, enums);
+  // TODO MemVarVector(std::string, maskEnums);
   MemVar(bool, hide);
   MemVar(int, maxSize);
 };
 
-MOBS_ENUM_DEF(TemplateType, TemplateSearch, TemplateCreate, TemplateEdit);
-MOBS_ENUM_VAL(TemplateType, "R",            "C",            "U");
+MOBS_ENUM_DEF(TemplateType, TemplateSearch, TemplateCreate, TemplateEdit, TemplateBucket);
+MOBS_ENUM_VAL(TemplateType, "R",            "C",            "U",          "B");
 
 class TemplateInfo : virtual public mobs::ObjectBase
 {
