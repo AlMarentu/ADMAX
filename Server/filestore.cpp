@@ -86,8 +86,9 @@ public:
   ObjInit(DMGR_BucketPool);
   MemVar(std::string, pool, KEYELEMENT1);
   MemVar(std::string, name, KEYELEMENT2);
+  MemVar(int, prio, KEYELEMENT3);  // 0 = uniq->alles in einen Bucket, 1,2,3 = BucketElement
   MemVar(int64_t, version, VERSIONFIELD);
-  MemVar(int, prio);  // 0 = uniq->alles in einen Bucket
+  MemVar(bool, displayOnly);
   MemVar(std::string, regex);
   MemVar(std::string, format);
 };
@@ -163,7 +164,7 @@ Filestore *Filestore::store = nullptr;
 mobs::DatabaseManager Filestore::dbMgr;  // singleton, darf nur einmalig eingerichtet werden und muss bis zum letzten Verwenden einer Datenbank bestehen bleiben
 
 
-void Filestore::newDocument(DocInfo &doc, const std::list<TagInfo>& tags) {
+void Filestore::newDocument(DocInfo &doc, const std::list<TagInfo> &tags, int groupId) {
   LOG(LM_INFO, "newDocument ");
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
   static DMGR_Counter cntr;
@@ -191,7 +192,38 @@ void Filestore::newDocument(DocInfo &doc, const std::list<TagInfo>& tags) {
 
   dbi.save(dbd);
 
+  std::list<uint64_t> docs;
+  if (groupId) { // Bei groupId Tags die auf selbe groupId verweisen weglassen, außer group-Tag selbst
+    std::string group;
+    for (auto &t:tags) {
+      if (t.tagId == groupId)
+        group = t.tagContent;
+    }
+    DMGR_Tag tg;
+    tg.content(group);
+    tg.tagId(groupId);
+    tg.active(true);
+    for (auto cursor = dbi.qbe(tg); not cursor->eof(); cursor->next()) {
+      dbi.retrieve(tg, cursor);
+      docs.emplace_back(tg.docId());
+    }
+    LOG(LM_INFO, "group " << group << " found " << docs.size() << " documents");
+    if (docs.empty())
+      groupId = 0;
+  }
+
   for (auto &t:tags) {
+    if (groupId and t.tagId != groupId) {
+      DMGR_Tag ts;
+      using Q = mobs::QueryGenerator;
+      Q query;
+      query << Q::AndBegin << ts.active.QiEq(true) << ts.tagId.QiEq(t.tagId) << ts.content.QiEq(t.tagContent)
+            << ts.docId.QiIn(docs) << Q::AndEnd;
+      if (not dbi.query(ts, query)->eof()) {
+        LOG(LM_INFO, "tag " << t.tagId << " " << t.tagContent << " already exists - skip");
+        continue;
+      }
+    }
     static DMGR_Counter cntr;
     if (cntr.id() != DMGR_Counter::CntrTag) {
       cntr.id(DMGR_Counter::CntrTag);
@@ -302,7 +334,7 @@ int Filestore::findBucket(const std::string &pool, const std::vector<std::string
     cntr.id(DMGR_Counter::CntrBucketInfo);
     dbi.load(cntr);
     dbi.save(cntr);
-    binfo.id(cntr.counter());
+    binfo.id(int(cntr.counter()));
     if (binfo.id() == 0)
       THROW("BucketId should not be 0");
     dbi.save(binfo);
@@ -386,10 +418,14 @@ std::string Filestore::tagName(TagId id) {
 }
 
 
-void Filestore::tagSearch(const std::string &pool, const std::map<std::string, TagSearch> &searchList, const std::set<int> &buckets,
-                          std::list<SearchResult> &result) {
+std::list<SearchResult>
+Filestore::tagSearch(const std::string &pool, const std::map<std::string, TagSearch> &searchList,
+                     const std::set<int> &buckets, const std::string &groupName) {
   LOG(LM_INFO, "search ");
-  result.clear();
+  std::list<SearchResult> result;
+  TagId groupId = 0;
+  if (not groupName.empty())
+    groupId = findTag(pool, groupName);
 
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
   DMGR_Tag ti;
@@ -482,7 +518,7 @@ void Filestore::tagSearch(const std::string &pool, const std::map<std::string, T
         startPrim = false;
         if (docIdsPrim.empty()) {
           LOG(LM_INFO, "empty primary search " << i.first);
-          return;
+          return result;
         }
       }
       if (docIds.empty()) {
@@ -490,30 +526,53 @@ void Filestore::tagSearch(const std::string &pool, const std::map<std::string, T
         break;
       }
     }
+    docIdsPrim = docIds;
+    if (groupId and not docIds.empty()) { // collect all docs with same groupId
+      DMGR_Tag tig;
+      std::list<uint64_t> l(docIds.begin(), docIds.end());
+      std::list<std::string> groupIds;
+      LOG(LM_INFO, "collect via groupId " << groupName << " from " << l.size() << " documents");
+      Q queryG1;
+      queryG1 << Q::AndBegin << tig.active.QiEq( true) << tig.tagId.QiEq(groupId) << tig.docId.QiIn(l) << Q::AndEnd;
+      for (auto cursor = dbi.query(tig, queryG1); not cursor->eof(); cursor->next()) {
+        dbi.retrieve(tig, cursor);
+        groupIds.emplace_back(tig.content());
+      }
+      LOG(LM_INFO, "expand via groupId " << groupName << " from " << groupIds.size() << " groupIds");
+      Q queryG2;
+      queryG2 << Q::AndBegin << tig.active.QiEq( true) << tig.tagId.QiEq(groupId) << tig.content.QiIn(groupIds) << Q::AndEnd;
+      for (auto cursor = dbi.query(tig, queryG2); not cursor->eof(); cursor->next()) {
+        dbi.retrieve(tig, cursor);
+        docIds.insert(tig.docId());
+      }
+    }
     if (bucket != 0 or buckets.size() == 1)
       docList.insert(docList.end(), docIds.begin(), docIds.end());
   }
 
   if (docList.empty())
-    return;
+    return result;
 
-//  std::list<uint64_t> l(docIds.begin(), docIds.end());
-  LOG(LM_INFO, "found " << docList.size() << " documents");
+  LOG(LM_INFO, "found " << docList.size() << " documents " << docIdsPrim.size() << " primaryId");
 
   Q query2;
-  query2 << Q::AndBegin << ti.active.Qi("=", true) << ti.docId.QiIn(docList) << Q::AndEnd;
+  query2 << Q::AndBegin << ti.active.QiEq(true) << ti.docId.QiIn(docList) << Q::AndEnd;
 
-  auto cursor = dbi.query(ti, query2);
-  while (not cursor->eof()) {
+  for (auto cursor = dbi.query(ti, query2); not cursor->eof(); cursor->next()) {
     dbi.retrieve(ti, cursor);
     SearchResult r;
     r.tagId = ti.tagId();
     r.tagContent = ti.content();
     r.docId = ti.docId();
     result.emplace_back(r);
-    cursor->next();
+    if (groupId and r.tagId == groupId and docIdsPrim.find(r.docId) != docIdsPrim.end()) {
+      r.tagContent.clear();
+      r.tagId = 0;
+      r.docId = ti.docId();
+      result.emplace_front(r);  // thus primary is sorted first
+    }
   }
-
+  return result;
 }
 
 void
@@ -676,13 +735,23 @@ void Filestore::loadBuckets(std::map<std::string, BucketPool> &buckets) {
   using Q = mobs::QueryGenerator;
   Q query;
   DMGR_BucketPool bp;
+  std::string primaryName;
   for (auto cursor = dbi.query(bp, query);not cursor->eof(); cursor->next()) {
     dbi.retrieve(bp, cursor);
     LOG(LM_INFO, bp.to_string());
     auto &b = buckets[bp.pool()];
     b.pool = bp.pool();
-    auto &e = b.elements[bp.name()];
-    e.prio = bp.prio();
+    std::string pf;
+    if (bp.prio() == 0 and primaryName.empty())
+      primaryName = bp.name();
+    else if (bp.displayOnly() or (bp.prio() > 0 and bp.name() == primaryName))
+      pf = std::to_string(b.elements.size()) + "$";
+    auto &e = b.elements[bp.name() + pf];
+    e.name = bp.name();
+    if (bp.displayOnly())
+      e.displayOnly = true;
+    else
+      e.prio = bp.prio();
     if (e.prio and not bp.regex().empty() and not bp.format().empty())
       e.formatter.insertPattern(mobs::to_wstring(bp.regex()), mobs::to_wstring(bp.format()));
   }
@@ -708,20 +777,17 @@ void Filestore::loadTemplatesFromFile(const std::string &filename) {
 
   for (auto &t:cr.templates) {
     if (t.type() == TemplateBucket) {
-      int c = 1;
       for (auto &i:t.tags) {
         DMGR_BucketPool bp;
         bp.pool(t.pool());
         bp.name(i.name());
+        bp.prio(i.prio());
         if (dbi.load(bp)) {
           bp.clearModified();
         }
+        bp.displayOnly(i.type() == TagDisplay);
         bp.regex(i.regex());
         bp.format(i.format());
-        if (i.type() == TagIdent)
-          bp.prio(0);
-        else
-          bp.prio(c++);
         if (bp.isModified())
           dbi.save(bp);
         else
@@ -761,19 +827,40 @@ int BucketPool::getTokenList(const TagSearch &tagSearch, TagSearch &tagResult) {
   return it->second.prio;
 }
 
-int BucketPool::getToken(const std::string &name, const std::string &content, std::string &token) {
-  auto it = elements.find(name);
-  if (it == elements.end())
-    return -1;
-  token.clear();
-  if (it->second.prio) {
-    std::wstring result;
-    if (it->second.formatter.empty())
-      token = content;
-    else if (it->second.formatter.format(mobs::to_wstring(content), result))
-      token = mobs::to_string(result);
+// return: store in bucket
+bool BucketPool::getToken(const std::string &name, const std::string &content,
+                          std::vector<std::string> &bucketToken, std::set<int> &prioCheck) {
+  bool bucketVar = true;
+  LOG(LM_INFO, "GetInfo " << name);
+  for (auto const &i:elements) {
+    if (i.second.name == name) {
+      LOG(LM_INFO, "GetInfo " << name << " found  " << i.second.prio);
+      if (i.second.displayOnly)
+        return false;
+      if (i.second.prio) {
+        if (i.second.prio >= bucketToken.size())
+          bucketToken.resize(i.second.prio);
+        std::wstring result;
+        std::string var;
+        if (i.second.formatter.empty())
+          var = content;
+        else if (i.second.formatter.format(mobs::to_wstring(content), result))
+          var = mobs::to_string(result);
+        if (prioCheck.find(i.second.prio) == prioCheck.end()) { // already filled
+          if (bucketToken[i.second.prio - 1] != var)
+            THROW("token mismatch " << bucketToken[i.second.prio - 1] << " <-> " << var);
+        } else {
+          prioCheck.erase(i.second.prio);
+          bucketToken[i.second.prio - 1] = var;
+        }
+      } else {
+        prioCheck.erase(0);
+        bucketVar = false;
+      }
+    }
   }
-  return it->second.prio;
+
+  return bucketVar;
 }
 
 

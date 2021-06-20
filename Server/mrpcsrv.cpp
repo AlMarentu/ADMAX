@@ -98,6 +98,7 @@ public:
   bool isIdent = false;
   bool isTag = false; // kein Inhalt
   bool doSearch = false; // create extra search tags
+  bool infoOnly = false; // no bucket no search
   set<string> token;
   mobs::StringFormatter formatter{};
 
@@ -121,10 +122,12 @@ public:
   map<string, BucketPool> bucketCache;
   string poolCache;
   string cacheTemplate;
+  string cacheGroupName;
 
   void enter();
   void release();
-
+  /// return poolname
+  string setTemplate(const string &templateName);
 };
 
 
@@ -163,6 +166,29 @@ void SessionContext::enter() {
 
 void SessionContext::release() {
   LOG(LM_INFO, "RELEASE " << sessionId);
+}
+
+string SessionContext::setTemplate(const string &templateName) {
+  if ( templateName.empty())
+    return "";
+  for (auto const &i:tInfo) {
+    if (i.name() == templateName) {
+      if (cacheTemplate != templateName) {
+        for (auto const &i:tInfo) {
+          if (i.name() == templateName) {
+            poolCache = i.pool();
+            tagInfoCache.clear();
+            for (auto &t:i.tags) {
+              tagInfoCache[t.name()].addInfo(t);
+              if (t.type() == TagIdent and cacheGroupName.empty())  // TODO Schalter in Config oder eigener Type
+                cacheGroupName = t.name();
+            }
+          }
+        }
+      }
+    }
+  }
+  return poolCache;
 }
 
 
@@ -308,6 +334,7 @@ public:
   }
 
 
+
   mobs::XmlWriter &xmlResult;
   mobs::CryptIstrBuf &streambufI;
   mobs::CryptOstrBuf &streambufO;
@@ -322,7 +349,6 @@ public:
   int64_t attachmentRefId = 0;
   string attachmentError; // if set, don#t save and return this message
 };
-
 
 
 
@@ -512,24 +538,7 @@ void executeRequest(SearchDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
     store->loadBuckets(context.bucketCache);
 
   // TODO Template prüfen (=Rechte), fixed Tags hinzu
-  string pool;
-  if (not obj.templateName().empty()) {
-    for (auto const &i:context.tInfo) {
-      if (i.name() == obj.templateName()) {
-        if (context.cacheTemplate != obj.templateName()) {
-          for (auto const &i:context.tInfo) {
-            if (i.name() == obj.templateName()) {
-              context.poolCache = i.pool();
-              context.tagInfoCache.clear();
-              for (auto &t:i.tags)
-                context.tagInfoCache[t.name()].addInfo(t);
-            }
-          }
-        }
-        pool = context.poolCache;
-      }
-    }
-  }
+  string pool = context.setTemplate(obj.templateName());
 
   if (pool.empty())
     THROW("template " << obj.templateName() << " invalid");
@@ -615,11 +624,10 @@ void executeRequest(SearchDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
   else
     buckets.insert(0);
 
-  list<SearchResult> result;
-
-  store->tagSearch(pool, tagSearch, buckets, result);
+  list<SearchResult> result = store->tagSearch(pool, tagSearch, buckets, context.cacheGroupName);
 
   map<TagId, string> tagNames;  // TODO cache in tagSearch mitverwenden
+  tagNames[0] = "prim$$";
   SearchDocumentResult sr;
   set<int> skip;
   for (auto it = result.cbegin(); it != result.cend(); it++) {
@@ -668,8 +676,10 @@ void TagInfoCache::addInfo(const TemplateTagInfo &t) {
     case TagDate:
       isDate = true;
       formatter.insertPattern(L"([0-3]\\d).([01]\\d).([12]\\d{3})", L"%3%d-%2%02d-%1%02d");
+      formatter.insertPattern(L"([12]\\d{3})-([01]\\d)-([0-3]\\d)", L"%1%d-%2%02d-%3%02d");
       break;
     case TagDisplay:
+      infoOnly = true;
       break;
   }
 }
@@ -725,26 +735,18 @@ void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
     if (context.bucketCache.empty())
       store->loadBuckets(context.bucketCache);
     // TODO Template prüfen (=Rechte), fixed Tags hinzu, nur Systemuser darf ohne Template speichern
-    string pool;
-    if (not obj.templateName().empty()) {
-      if (context.cacheTemplate != obj.templateName()) {
-        for (auto const &i:context.tInfo) {
-          if (i.name() == obj.templateName()) {
-            context.poolCache = i.pool();
-            context.tagInfoCache.clear();
-            for (auto &t:i.tags)
-              context.tagInfoCache[t.name()].addInfo(t);
-          }
-        }
-      }
-      pool = context.poolCache;
-    } else
+    string pool = context.setTemplate(obj.templateName());
+    if (pool.empty())
       pool = obj.pool();
 
     if (pool.empty()) {
       LOG(LM_ERROR, "template " << obj.templateName() << " invalid");
       throw MrpcException("BAD TEMPLATE");
     }
+
+    TagId groupId = 0;
+    if (not context.cacheGroupName.empty())
+      groupId = store->findTag(pool, context.cacheGroupName);
 
     auto const bucketIt = context.bucketCache.find(pool);
 
@@ -772,41 +774,41 @@ void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
     }
     class TagTmp {
     public:
-      TagTmp(const string &n, const string &c, int p = -1) : name(n), content(c), prio(p) {};
+      TagTmp(const string &n, const string &c) : name(n), content(c) {};
       string name;
       string content;
-      int prio;
+      bool inBucket = false;
     };
-    list<TagTmp> tagTmp;
-    for (auto &t:obj.tags) {
-      string value = t.content();
-      if (not obj.templateName().empty()) {
-        auto f = context.tagInfoCache.find(t.name());
-        if (f != context.tagInfoCache.end()) {
-          if (not f->second.format(value)) {
-            LOG(LM_ERROR, "format failed " << t.name());
-            throw MrpcException(STRSTR("BAD TAG " << t.name()));
-          } else if (f->second.doSearch) {
-            wstring n = mobs::to_wstring(value);
-            std::wstring::const_iterator it = n.begin();
-            while (it != n.end()) {
-              string result;
-              it = mobs::to7Up(it, n.end(), result);
-              LOG(LM_INFO, "NNN " << value << " -> " << result);
-              tagTmp.emplace_back(t.name() + "$$", result);
-            }
-          }
-        } else
-          LOG(LM_INFO, "tag w/o info " << t.name());
-      }
-      tagTmp.emplace_back(t.name(), value);
-    }
     if (xi.attachmentError.empty()) {
+      list<TagTmp> tagTmp;
+      for (auto &t:obj.tags) {
+        string value = t.content();
+        if (not obj.templateName().empty()) {
+          auto f = context.tagInfoCache.find(t.name());
+          if (f != context.tagInfoCache.end()) {
+            if (not f->second.format(value)) {
+              LOG(LM_ERROR, "format failed " << t.name());
+              throw MrpcException(STRSTR("BAD TAG " << t.name()));
+            } else if (f->second.doSearch) {
+              wstring n = mobs::to_wstring(value);
+              std::wstring::const_iterator it = n.begin();
+              while (it != n.end()) {
+                string result;
+                it = mobs::to7Up(it, n.end(), result);
+                LOG(LM_INFO, "NNN " << value << " -> " << result);
+                tagTmp.emplace_back(t.name() + "$$", result);
+              }
+            }
+          } else
+            LOG(LM_INFO, "tag w/o info " << t.name());
+        }
+        tagTmp.emplace_back(t.name(), value);
+      }
       std::list<TagInfo> tagInfo;
 
-      vector<string> buckTok;
       if (bucketIt != context.bucketCache.cend()) {
         // Bucket auf Vollständigkeit prüfen
+        vector<string> buckTok;
         set<int> prioCheck;
         bool primaryOnly = true;
         for (auto const &i:bucketIt->second.elements)
@@ -814,19 +816,10 @@ void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
         // extract bucket tags, mark primary tags
         for (auto &i:tagTmp) {
           string token;
-          int prio = bucketIt->second.getToken(i.name, i.content, token);
-          if (prio >= 0)
-            prioCheck.erase(prio);
-          if (prio != 0)
+          bool inBucket = bucketIt->second.getToken(i.name, i.content, buckTok, prioCheck);
+          if (inBucket)
             primaryOnly = false;
-          if (prio > 0) {
-            if (prio >= buckTok.size())
-              buckTok.resize(prio);
-            buckTok[prio - 1] = token;
-          } else if (prio == 0) {
-            store->insertTag(tagInfo, pool, i.name, i.content);
-          }
-          i.prio = prio;
+          i.inBucket = inBucket;
         }
         if (prioCheck.find(0) != prioCheck.end()) {
           LOG(LM_ERROR, "primary tag missing");
@@ -836,14 +829,24 @@ void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
           LOG(LM_ERROR, "missing bucket tag " << *prioCheck.begin());
           throw MrpcException("BAD CONTENT");
         }
+
+        int bucket = -1;
+        for (auto &i:tagTmp) {
+          if (i.inBucket) {
+            if (bucket == -1)
+              bucket = store->findBucket(pool, buckTok);
+            store->insertTag(tagInfo, pool, i.name, i.content, bucket);
+          } else
+            store->insertTag(tagInfo, pool, i.name, i.content);
+        }
       }
-      int bucket = store->findBucket(pool, buckTok);
-      for (auto &i:tagTmp) {
-        if (i.prio)
-          store->insertTag(tagInfo, pool, i.name, i.content, bucket);
+      else
+      {
+        for (auto &i:tagTmp)
+          store->insertTag(tagInfo, pool, i.name, i.content);
       }
 
-      store->newDocument(docInfo, tagInfo);
+      store->newDocument(docInfo, tagInfo, 0/*groupId*/);
     }
   } catch (MrpcException &e) {
     LOG(LM_ERROR, "Mrpc-Exception " << e.what());

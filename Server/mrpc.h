@@ -230,6 +230,7 @@ public:
   // TODO MemVarVector(std::string, maskEnums);
   MemVar(bool, hide);
   MemVar(int, maxSize);
+  MemVar(int, prio, USENULL); // Prio für BucketInfo 0, 1, 2, 3
 };
 
 MOBS_ENUM_DEF(TemplateType, TemplateSearch, TemplateCreate, TemplateEdit, TemplateBucket);

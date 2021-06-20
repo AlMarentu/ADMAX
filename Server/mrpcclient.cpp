@@ -302,7 +302,7 @@ void doRestore(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xm
   }
 };
 
-void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::XmlOut &xo, size_t skip) {
+void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::XmlOut &xo, const string &path, size_t skip) {
   if (not xr.dumpStr.is_open())
     THROW("cannot open import file");
   LOG(LM_INFO, "READ INPUT");
@@ -359,7 +359,7 @@ void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xml
           templateName = buf;
       } else if (*iter == "$filename") {
         filename = buf;
-      } else if (not iter->empty() and (*iter)[0] != '$') {
+      } else if (not iter->empty() and buf[0] and (*iter)[0] != '$') {
         auto &t = sd.tags[mobs::MemBaseVector::nextpos];
         t.name(*iter);
         t.content(buf);
@@ -370,6 +370,13 @@ void doImport(mobs::tcpstream &con, XmlInput &xr, mobs::XmlWriter &xf, mobs::Xml
       skip--;
       continue;
     }
+
+    if (filename.empty()) {
+      LOG(LM_ERROR, "missing file name " << filename);
+      continue;
+    }
+    if (filename[0] != '/' and not path.empty())
+      filename = STRSTR(path << '/' << filename);
 
     size_t pos = filename.rfind('.');
     string ext;
@@ -549,7 +556,12 @@ void client(const string &mode, const string& server, int port, const string &ke
         doRestore(con, xr, xf, xo);
       } else if (mode == "import") {
         xr.dumpStr.open(file, ios::in);
-        doImport(con, xr, xf, xo, skip);
+        size_t pos = file.rfind('/');
+        string path = file;
+        if (pos == string::npos)
+          pos = 0;
+        path.resize(pos);
+        doImport(con, xr, xf, xo, path, skip);
       } else {
         Ping p;
         p.id(1);

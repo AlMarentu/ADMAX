@@ -92,10 +92,19 @@ public:
   public:
     std::string name;
     mobs::StringFormatter formatter{};
-    int prio;
+    int prio = 0;
+    bool displayOnly = false;
   };
 
-  int getToken(const std::string &name, const std::string &content, std::string &token);
+  /** \brief
+   *
+   * @param name
+   * @param content
+   * @param bucketToken [0] primary, [1..3] Bucket id 1..3
+   * @param prioCheck
+   * @return true if write in bucket
+   */
+  bool getToken(const std::string &name, const std::string &content, std::vector<std::string> &bucketToken, std::set<int> &prioCheck);
   int getTokenList(const TagSearch &tagSearch, TagSearch &tagResult);
   std::string pool;
   std::map<std::string, BucketTag> elements;
@@ -115,7 +124,7 @@ public:
   std::string writeFile(std::istream &source, const DocInfo &info);
   void readFile(const std::string &file, std::ostream &dest);
 
-  void newDocument(DocInfo &doc, const std::list<TagInfo>&);
+  void newDocument(DocInfo &doc, const std::list<TagInfo> &tags, int groupId);
   /// schreibt Dateinamen in DB
   void documentCreated(DocInfo &doc);
 
@@ -128,13 +137,14 @@ public:
   std::string tagName(TagId id);
 
   int findBucket(const std::string &pool, const std::vector<std::string> &bucketToken);
+  int findBucket(const std::string &pool, int groupId, const std::string &primToken);
 
   void bucketSearch(const std::string &pool, const std::map<int, TagSearch> &searchList, std::set<int> &result);
 
   //  void tagSearch(const std::list<TagSearchInfo> &searchList, std::list<SearchResult> &result);
   /// alle Bedingungen oder-verknüpfen
-  void tagSearch(const std::string &pool, const std::map<std::string, TagSearch> &searchList, const std::set<int> &buckets,
-                 std::list<SearchResult> &result);
+  std::list<SearchResult> tagSearch(const std::string &pool, const std::map<std::string, TagSearch> &searchList,
+                                    const std::set<int> &buckets, const std::string &groupName);
   /// tag info zu einem Dokument
   void tagInfo(DocId id, std::list<SearchResult> &result, DocInfo &info);
   /// document indo

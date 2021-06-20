@@ -721,12 +721,17 @@ void MainWindow::searchDocument() {
 //          ui->treeWidget->setItem(row, 0, new QTableWidgetItem(QString::number(i.docId())));
           std::string groupId;
           int groupCol = -1;
+          bool prim = false;
           QList<QString> line;
           line.reserve(columns);
           for (int c = 1; c < columns; c++)
             line << "";
           line << QString::number(i.docId());
           for (auto &j:i.tags) {
+            if (j.name() == "prim$$") {
+              prim = true;
+              continue;
+            }
             auto info = currentTemplate.tableDisplay.find(j.name());
             if (info == currentTemplate.tableDisplay.end()) {
               LOG(LM_INFO, "UNUSED " << j.name() << "=" << j.content());
