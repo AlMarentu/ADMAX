@@ -230,6 +230,7 @@ public:
   // TODO MemVarVector(std::string, maskEnums);
   MemVar(bool, hide);
   MemVar(int, maxSize);
+  MemVar(bool, grpRepeat); // repeat fpr whole group
   MemVar(int, prio, USENULL); // Prio für BucketInfo 0, 1, 2, 3
 };
 
