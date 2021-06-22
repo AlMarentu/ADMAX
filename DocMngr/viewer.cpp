@@ -36,6 +36,7 @@
 #include <QButtonGroup>
 #include <QScrollBar>
 #include <QPaintEvent>
+#include <QGridLayout>
 #include <string>
 #include "mobs/logging.h"
 

@@ -715,11 +715,7 @@ void MainWindow::searchDocument() {
       LOG(LM_INFO, "RESULT " << obj->to_string());
       if (auto res = dynamic_cast<SearchDocumentResult *>(obj)) {
         std::map<std::string, QTreeWidgetItem *> groups;
-        QList<QString> line;
-        line.reserve(columns);
         std::set<int> grpRepeat;
-        for (int c = 0; c < columns; c++)
-          line << "";
         for(auto &i:res->tags) {
           LOG(LM_INFO, "Result: " << i.docId());
 //          int row = ui->treeWidget->rowCount();
@@ -728,10 +724,12 @@ void MainWindow::searchDocument() {
           std::string groupId;
           int groupCol = -1;
           bool prim = false;
-          for (int c = 0; c < columns-1; c++)
-            if (grpRepeat.find(c) == grpRepeat.end())
-            line.replace(c, "");
-          line.replace(columns-1, QString::number(i.docId()));
+          QList<QString> line;
+          line.reserve(columns);
+          for (int c = 1; c < columns; c++)
+            line << "";
+          line << QString::number(i.docId());
+
           for (auto &j:i.tags) {
             if (j.name() == "prim$$") {
               prim = true;
@@ -775,7 +773,9 @@ void MainWindow::searchDocument() {
               gp = it->second;
           }
           if (gp) {
-            line.replace(groupCol, "");
+            line.replace(groupCol, ""); // clear group id
+            for (auto c:grpRepeat)  // duplicate from group leader
+              line.replace(c, gp->text(c));
             gp->addChild(new QTreeWidgetItem(gp, line));
             LOG(LM_INFO, "CHILD " << gp->childCount());
           } else {

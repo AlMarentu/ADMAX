@@ -30,6 +30,14 @@
 
 #include "mrpc.h"
 
+/*
+ * db.DMGR_Tag.createIndex({ tagId:1, active:1, content:1 })
+ * db.DMGR_Tag.createIndex({ docId:1 })
+ * db.DMGR_TagInfo.createIndex({ name:1, pool:1, bucket:1 }, { unique: true })
+ * db.DMGR_BucketInfo.createIndex({ pool:1, tok1:1, tok2:1, tok3:1 })
+ *
+ */
+
 class DMGR_Document : virtual public mobs::ObjectBase
 {
 public:

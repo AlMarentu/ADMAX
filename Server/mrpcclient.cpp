@@ -36,6 +36,7 @@
 #include <sstream>
 #include <array>
 #include <getopt.h>
+#include <cstring>
 
 
 using namespace std;
