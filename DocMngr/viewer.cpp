@@ -298,7 +298,7 @@ void Viewer::showDocument() {
 
   auto widget = new QWidget(this);
   QPalette p = palette();
-  p.setColor(QPalette::Background, QColorConstants::White);
+  p.setColor(QPalette::Background, Qt::white);
   data->grid = new QGridLayout(widget);
   ui->scrollArea->setWidget(widget);
 
@@ -597,7 +597,7 @@ void Viewer::thumbnails(bool on) {
       ui->scrollAreaThumb->setWidget(data->thumbs);
 
       QPalette pal = palette();
-      pal.setColor(QPalette::Background, QColorConstants::White);
+      pal.setColor(QPalette::Background, Qt::white);
       int cols = 3;
       double dpi = 25.0;
       int maxX = 0;
