@@ -169,7 +169,7 @@
      <string>Datei</string>
     </property>
     <addaction name="actionExit"/>
-    <addaction name="actionzusatz"/>
+    <addaction name="actionServer"/>
    </widget>
    <widget class="QMenu" name="menuBearbeiten">
     <property name="title">
@@ -194,9 +194,12 @@
     <string>XXXX</string>
    </property>
   </action>
-  <action name="actionzusatz">
+  <action name="actionServer">
    <property name="text">
-    <string>zusatz</string>
+    <string>Server</string>
+   </property>
+   <property name="toolTip">
+    <string>Server</string>
    </property>
   </action>
  </widget>
@@ -296,6 +299,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionServer</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>server()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>626</x>
+     <y>417</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>load()</slot>
@@ -305,5 +324,6 @@
   <slot>getDocument()</slot>
   <slot>searchRowClicked(int,int)</slot>
   <slot>searchRowClicked(QTreeWidgetItem*,int)</slot>
+  <slot>server()</slot>
  </slots>
 </ui>

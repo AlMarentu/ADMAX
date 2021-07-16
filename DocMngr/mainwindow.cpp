@@ -46,6 +46,7 @@
 #include <QLabel>
 #include <set>
 #include <fstream>
+#include <QInputDialog>
 
 #include "mrpccli.h"
 #include "viewer.h"
@@ -84,6 +85,9 @@ MainWindow::MainWindow(QWidget *parent) :
   ui->setupUi(this);
   logging::currentLevel = LM_INFO;
   LOG(LM_INFO, "start");
+
+  QSettings obj("AlMarentu", "ADMAX");
+  MrpcClient::server = obj.value("main/host", "localhost:4444").toString();
 
 
   ui->pushButtonSave->setEnabled(false);
@@ -900,6 +904,21 @@ void MainWindow::searchRowClicked(QTreeWidgetItem *item, int col) {
     LOG(LM_INFO, "CLICK " << doc);
     if (doc > 0)
       loadDocument(doc);
+  }
+}
+
+void MainWindow::server() {
+  QSettings obj("AlMarentu", "ADMAX");
+//  QString host = obj.value("main/host", "localhost:4444").toString();
+  bool ok;
+  QString host = QInputDialog::getText(this, tr("Server Settings"),
+                               tr("host:port"), QLineEdit::Normal,
+                               MrpcClient::server, &ok);
+  if (ok and not host.isEmpty()) {
+    obj.setValue("main/host", host);
+    LOG(LM_INFO, "Set host to " << host.toStdString());
+    MrpcClient::server = host;
+    getConfiguration();
   }
 }
 

@@ -288,9 +288,16 @@ MrpcClient::MrpcClient(QWidget *parent) : QObject() {
   connect(socket, SIGNAL(readyRead()), this, SLOT(readyRead()));
   connect(socket, SIGNAL(bytesWritten(qint64)), this, SLOT(bytesWritten(qint64)));
   connect(socket, SIGNAL(errorOccurred(QAbstractSocket::SocketError)), this, SLOT(errorOccurred(QAbstractSocket::SocketError)));
-  socket->connectToHost("localhost", 4444);
-
+  QString host = server.section(':', 0, 0);
+  u_int port = server.section(':', 1, 1).toUInt();
+  LOG(LM_INFO, "using server " << host.toStdString() << ":" << port);
+  if (not host.isEmpty() and port > 0)
+    socket->connectToHost(host, port);
+  else
+    LOG(LM_ERROR, "invalid server " << server.toStdString());
 }
+
+QString MrpcClient::server;
 
 MrpcClient::~MrpcClient() {
   LOG(LM_INFO, "MrpcClient destruktor ");

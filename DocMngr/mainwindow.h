@@ -46,6 +46,7 @@ public:
   void initTags(int templateId);
 
 public slots:
+  void server();
   void load();
   void save();
   void loadFile();
