@@ -27,7 +27,10 @@
 #include "mobs/rsa.h"
 #include "mobs/tcpstream.h"
 #include "mobs/converter.h"
+
+#define MRPC_SERVER
 #include "mrpc.h"
+
 #include "filestore.h"
 #include <fstream>
 #include <array>
@@ -83,13 +86,6 @@ protected:
 
 };
 
-class ExecVisitor : virtual public mobs::ObjVisitor {
-public:
-  ExecVisitor(mobs::XmlOut &xmlOut, XmlInput &xi) : m_xmlOut(xmlOut), m_xi(xi) {}
-  void visit(mobs::ObjectBase &obj) override;
-  mobs::XmlOut &m_xmlOut;
-  XmlInput &m_xi;
-};
 
 class TagInfoCache {
 public:
@@ -362,13 +358,6 @@ public:
 //Objektdefinitionen
 
 
-void executeRequest(Ping &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
-  LOG(LM_INFO, "Send duplicate");
-  obj.cnt(obj.cnt()+1);
-  obj.traverse(xmlOut);
-}
-
-
 class CCBuf : public std::basic_streambuf<char> {
 public:
   using Base = std::basic_streambuf<char>;
@@ -391,9 +380,89 @@ public:
 
 
 
-void executeRequest(GetDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
-  TRACE("");
 
+
+void TagInfoCache::addInfo(const TemplateTagInfo &t) {
+  name = t.name();
+  switch (t.type()) {
+    case TagIdent:
+      isIdent = true;
+    case TagString:
+      if (not t.regex().empty())
+        formatter.insertPattern(mobs::to_wstring(t.regex()), mobs::to_wstring(t.format()));
+      else if (t.type() == TagString)
+        doSearch = true;
+      break;
+    case TagEnumeration:
+      for (auto &i:t.enums)
+        token.emplace(i());
+      isTag = token.empty();
+      break;
+    case TagDate:
+      isDate = true;
+      formatter.insertPattern(L"([0-3]\\d).([01]\\d).([12]\\d{3})", L"%3%d-%2%02d-%1%02d");
+      formatter.insertPattern(L"([12]\\d{3})-([01]\\d)-([0-3]\\d)", L"%1%d-%2%02d-%3%02d");
+      break;
+    case TagDisplay:
+      infoOnly = true;
+      break;
+  }
+}
+
+
+bool TagInfoCache::format(string &value) const {
+  if (isTag) {
+    return value.empty();
+  }
+  if (not formatter.empty()) {
+    wstring result;
+    if (formatter.format(mobs::to_wstring(value), result)) {
+      LOG(LM_INFO, "FORMAT " << name << " " << value << " -> " << mobs::to_string(result));
+      value = mobs::to_string(result);
+      return true;
+    }
+    // alternativ auch Token zulassen
+    if (token.find(value) != token.end()) {
+      LOG(LM_INFO, "TOKEN " << name << " " << value);
+      return true;
+    }
+    return false;
+  }
+  if (isDate) {
+    mobs::MDate t;
+    if (not mobs::string2x(value, t))
+      return false;
+    LOG(LM_INFO, "FORMAT " << name << " " << value << " -> " << mobs::to_string_iso8601(t, mobs::MDay));
+    value = mobs::to_string_iso8601(t, mobs::MDay);
+  }
+  if (not token.empty()) {
+    if (token.find(value) != token.end()) {
+      LOG(LM_INFO, "TOKEN " << name << " " << value);
+      return true;
+    }
+  } else
+    return true;
+
+  return false;
+}
+
+
+ObjRegister(Ping);
+ObjRegister(SaveDocument);
+ObjRegister(SearchDocument);
+ObjRegister(Dump);
+ObjRegister(GetDocument);
+ObjRegister(GetConfig);
+
+
+void ExecVisitor::visit(mobs::ObjectBase &obj) {
+  THROW("no MRpc object");
+}
+
+void ExecVisitor::visit(GetDocument &obj) {
+  TRACE("");
+  if (not m_xi.ctx)
+    THROW("missing session context");
   auto store = Filestore::instance();
   list<SearchResult> result;
   DocInfo docInfo;
@@ -448,27 +517,27 @@ void executeRequest(GetDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
       doc.info.creationInfo(docInfo.creationInfo);
     }
 
-    doc.traverse(xmlOut);
+    doc.traverse(m_xmlOut);
     LOG(LM_INFO, "endEncryption;");
-    xi.endEncryption();
+    m_xi.endEncryption();
 
     LOG(LM_INFO, "Start attachment type=" << doc.type.toStr(mobs::ConvToStrHint(false)));
     vector<u_char> iv;
     iv.resize(mobs::CryptBufAes::iv_size());
     mobs::CryptBufAes::getRand(iv);
-    mobs::CryptBufAes cry(xi.ctx->key, iv, "", true);
+    mobs::CryptBufAes cry(m_xi.ctx->key, iv, "", true);
 //    xi.streambufO.getOstream().unsetf(ios::skipws);
-    cry.setOstr(xi.streambufO.getOstream());
+    cry.setOstr(m_xi.streambufO.getOstream());
     ostream ostb(&cry);
-    std::streamsize a = xi.streambufO.getOstream().tellp();
+    std::streamsize a = m_xi.streambufO.getOstream().tellp();
 
     store->readFile(docInfo.fileName, ostb);
     cry.finalize();
-    std::streamsize b = xi.streambufO.getOstream().tellp();
+    std::streamsize b = m_xi.streambufO.getOstream().tellp();
     if (b - a != AES_BYTES(docInfo.fileSize))
       LOG(LM_ERROR, "Error in size: written " << b - a << " <> calculated " << AES_BYTES(docInfo.fileSize));
     LOG(LM_INFO, "WRITTEN: " << a << " + " << b - a);
-    xi.streambufO.getOstream().flush();
+    m_xi.streambufO.getOstream().flush();
   } else {
     Document doc;
     vector<u_char> buf;
@@ -497,40 +566,17 @@ void executeRequest(GetDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
       doc.info.creationInfo(docInfo.creationInfo);
     }
     doc.content(std::move(buf));
-    doc.traverse(xmlOut);
+    doc.traverse(m_xmlOut);
   }
 }
 
-
-
-void executeRequest(Dump &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
-  LOG(LM_INFO, "Dump DB");
-  auto store = Filestore::instance();
-  std::vector<DocId> result;
-  store->allDocs(result);
-  for (auto i:result) {
-    GetDocument gd;
-    gd.docId(i);
-    gd.allowAttach(true);
-    gd.allInfos(true);
-
-    xi.needEncryption();
-    ::executeRequest(gd, xmlOut, xi);
-
-  }
-
-  //this->traverse(xmlOut);
-}
-
-
-
-
-
-void executeRequest(SearchDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
+void ExecVisitor::visit(SearchDocument &obj) {
+  if (not m_xi.ctx)
+    THROW("missing session context");
   TRACE("");
   LOG(LM_INFO, "COMMAND " << obj.to_string());
 
-  SessionContext &context = *xi.ctx;
+  SessionContext &context = *m_xi.ctx;
   auto store = Filestore::instance();
   if (context.tInfo.empty())
     store->loadTemplates(context.tInfo);
@@ -649,86 +695,19 @@ void executeRequest(SearchDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
   }
 
   LOG(LM_INFO, "Result: " << sr.to_string());
-  sr.traverse(xmlOut);
-
+  sr.traverse(m_xmlOut);
 }
 
-
-
-
-
-void TagInfoCache::addInfo(const TemplateTagInfo &t) {
-  name = t.name();
-  switch (t.type()) {
-    case TagIdent:
-      isIdent = true;
-    case TagString:
-      if (not t.regex().empty())
-        formatter.insertPattern(mobs::to_wstring(t.regex()), mobs::to_wstring(t.format()));
-      else if (t.type() == TagString)
-        doSearch = true;
-      break;
-    case TagEnumeration:
-      for (auto &i:t.enums)
-        token.emplace(i());
-      isTag = token.empty();
-      break;
-    case TagDate:
-      isDate = true;
-      formatter.insertPattern(L"([0-3]\\d).([01]\\d).([12]\\d{3})", L"%3%d-%2%02d-%1%02d");
-      formatter.insertPattern(L"([12]\\d{3})-([01]\\d)-([0-3]\\d)", L"%1%d-%2%02d-%3%02d");
-      break;
-    case TagDisplay:
-      infoOnly = true;
-      break;
-  }
-}
-
-
-bool TagInfoCache::format(string &value) const {
-  if (isTag) {
-    return value.empty();
-  }
-  if (not formatter.empty()) {
-    wstring result;
-    if (formatter.format(mobs::to_wstring(value), result)) {
-      LOG(LM_INFO, "FORMAT " << name << " " << value << " -> " << mobs::to_string(result));
-      value = mobs::to_string(result);
-      return true;
-    }
-    // alternativ auch Token zulassen
-    if (token.find(value) != token.end()) {
-      LOG(LM_INFO, "TOKEN " << name << " " << value);
-      return true;
-    }
-    return false;
-  }
-  if (isDate) {
-    mobs::MDate t;
-    if (not mobs::string2x(value, t))
-      return false;
-    LOG(LM_INFO, "FORMAT " << name << " " << value << " -> " << mobs::to_string_iso8601(t, mobs::MDay));
-    value = mobs::to_string_iso8601(t, mobs::MDay);
-  }
-  if (not token.empty()) {
-    if (token.find(value) != token.end()) {
-      LOG(LM_INFO, "TOKEN " << name << " " << value);
-      return true;
-    }
-  } else
-    return true;
-
-  return false;
-}
-
-void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
+void ExecVisitor::visit(SaveDocument &obj) {
   TRACE("");
+  if (not m_xi.ctx)
+    THROW("missing session context");
   DocInfo docInfo;
   docInfo.fileSize = obj.size();
-  xi.attachmentError.clear();
-  xi.attachmentRefId = obj.refId();
+  m_xi.attachmentError.clear();
+  m_xi.attachmentRefId = obj.refId();
   try {
-    SessionContext &context = *xi.ctx;
+    SessionContext &context = *m_xi.ctx;
     auto store = Filestore::instance();
     if (context.tInfo.empty())
       store->loadTemplates(context.tInfo);
@@ -779,7 +758,7 @@ void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
       string content;
       bool inBucket = false;
     };
-    if (xi.attachmentError.empty()) {
+    if (m_xi.attachmentError.empty()) {
       list<TagTmp> tagTmp;
       for (auto &t:obj.tags) {
         string value = t.content();
@@ -850,16 +829,18 @@ void executeRequest(SaveDocument &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
     }
   } catch (MrpcException &e) {
     LOG(LM_ERROR, "Mrpc-Exception " << e.what());
-    xi.attachmentError = e.what();
+    m_xi.attachmentError = e.what();
   } catch (exception &e) {
     LOG(LM_ERROR, "Exception " << e.what());
-    xi.attachmentError = "BAD UNKNOWN";
+    m_xi.attachmentError = "BAD UNKNOWN";
   }
-  xi.attachmentInfo = docInfo;
+  m_xi.attachmentInfo = docInfo;
 }
 
-void executeRequest(GetConfig &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
-  SessionContext &context = *xi.ctx;
+void ExecVisitor::visit(GetConfig &obj) {
+  if (not m_xi.ctx)
+    THROW("missing session context");
+  SessionContext &context = *m_xi.ctx;
   auto store = Filestore::instance();
   ConfigResult co;
   context.tInfo.clear();
@@ -869,35 +850,36 @@ void executeRequest(GetConfig &obj, mobs::XmlOut &xmlOut, XmlInput &xi) {
     co.templates[mobs::MemBaseVector::nextpos].doCopy(t);
   }
   LOG(LM_INFO, "Result: " << co.to_string());
-  co.traverse(xmlOut);
+  co.traverse(m_xmlOut);
 }
 
-ObjRegister(Ping);
-ObjRegister(SaveDocument);
-ObjRegister(SearchDocument);
-ObjRegister(Dump);
-ObjRegister(GetDocument);
-ObjRegister(GetConfig);
-
-void ExecVisitor::visit(mobs::ObjectBase &obj) {
+void ExecVisitor::visit(Ping &obj) {
   if (not m_xi.ctx)
     THROW("missing session context");
-  if (auto mrpc = dynamic_cast<GetDocument *>(&obj))
-    executeRequest(*mrpc, m_xmlOut, m_xi);
-  else if (auto mrpc = dynamic_cast<SearchDocument *>(&obj))
-    executeRequest(*mrpc, m_xmlOut, m_xi);
-  else if (auto mrpc = dynamic_cast<SaveDocument *>(&obj))
-    executeRequest(*mrpc, m_xmlOut, m_xi);
-  else if (auto mrpc = dynamic_cast<GetConfig *>(&obj))
-    executeRequest(*mrpc, m_xmlOut, m_xi);
-  else if (auto mrpc = dynamic_cast<Ping *>(&obj))
-    executeRequest(*mrpc, m_xmlOut, m_xi);
-  else if (auto mrpc = dynamic_cast<Dump *>(&obj))
-    executeRequest(*mrpc, m_xmlOut, m_xi);
-  else
-    THROW("no MRpc object");
+  LOG(LM_INFO, "Send duplicate");
+  obj.cnt(obj.cnt()+1);
+  obj.traverse(m_xmlOut);
 }
 
+void ExecVisitor::visit(Dump &obj) {
+  if (not m_xi.ctx)
+    THROW("missing session context");
+  LOG(LM_INFO, "Dump DB");
+  auto store = Filestore::instance();
+  std::vector<DocId> result;
+  store->allDocs(result);
+  for (auto i:result) {
+    GetDocument gd;
+    gd.docId(i);
+    gd.allowAttach(true);
+    gd.allInfos(true);
+
+    m_xi.needEncryption();
+    visit(gd);
+  }
+
+  //this->traverse(xmlOut);
+}
 
 
 #define TLOG(l, x) LOG(l, 'T' << id << ' ' << x)

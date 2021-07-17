@@ -25,6 +25,31 @@
 #include <vector>
 #include <string>
 
+#define VISITOR(Class) void visit(mobs::ObjVisitor &visitor) override { auto v = dynamic_cast<Class *>(&visitor); if (v) v->visit(*this); }
+
+#ifdef MRPC_SERVER
+class XmlInput;
+class GetDocument;
+class SearchDocument;
+class SaveDocument;
+class GetConfig;
+class Ping;
+class Dump;
+class ExecVisitor : virtual public mobs::ObjVisitor {
+public:
+  ExecVisitor(mobs::XmlOut &xmlOut, XmlInput &xi) : m_xmlOut(xmlOut), m_xi(xi) {}
+  void visit(mobs::ObjectBase &obj) override;
+  void visit(GetDocument &obj);
+  void visit(SearchDocument &obj);
+  void visit(SaveDocument &obj);
+  void visit(GetConfig &obj);
+  void visit(Ping &obj);
+  void visit(Dump &obj);
+  mobs::XmlOut &m_xmlOut;
+  XmlInput &m_xi;
+};
+#endif
+
 class Session : virtual public mobs::ObjectBase
 {
 public:
@@ -98,6 +123,9 @@ public:
 
   MemVar(int, id, KEYELEMENT1);
   MemVar(int, cnt);
+#ifdef MRPC_SERVER
+  VISITOR(ExecVisitor);
+#endif
 };
 
 
@@ -140,6 +168,10 @@ public:
   MemVar(std::string, templateName); // für fixedTags und Berechtigung; ist TemplateName gesetzt, wird pool ignoriert
   MemVector(DocumentTags, tags);
 
+#ifdef MRPC_SERVER
+  void visit(mobs::ObjVisitor &visitor) override { auto v = dynamic_cast<ExecVisitor *>(&visitor); if (v) v->visit(*this); };
+#endif
+
 };
 
 /// Anforderung Document attached
@@ -152,6 +184,9 @@ public:
   MemVar(std::string, type);  // TODO sinvoll? evtl. Typ-Konvertierung oder einzelne Seiten
   MemVar(bool, allowAttach);  // große Dokumente dürfen als Attachment gesendet werden
   MemVar(bool, allInfos);     // alle vorhandenen Infos senden
+#ifdef MRPC_SERVER
+  VISITOR(ExecVisitor);
+#endif
 };
 
 class Dump : virtual public mobs::ObjectBase
@@ -160,6 +195,9 @@ public:
   ObjInit(Dump);
 
   MemVar(int, id, KEYELEMENT1);
+#ifdef MRPC_SERVER
+  VISITOR(ExecVisitor);
+#endif
 };
 
 class Document : virtual public mobs::ObjectBase
@@ -208,7 +246,9 @@ public:
   MemVar(uint64_t, parentId);
   MemVar(std::string, creationInfo);
   MemVar(mobs::MTime, creationTime);
-
+#ifdef MRPC_SERVER
+  VISITOR(ExecVisitor);
+#endif
 
 };
 
@@ -256,7 +296,9 @@ class GetConfig : virtual public mobs::ObjectBase {
 public:
   ObjInit(GetConfig);
   MemVar(bool, start);
-
+#ifdef MRPC_SERVER
+  VISITOR(ExecVisitor);
+#endif
 };
 
 class ConfigResult : virtual public mobs::ObjectBase {
