@@ -105,6 +105,7 @@ public:
    * @return true if write in bucket
    */
   bool getToken(const std::string &name, const std::string &content, std::vector<std::string> &bucketToken, std::set<int> &prioCheck);
+  bool isBucketTag(const std::string &tagName);
   int getTokenList(const TagSearch &tagSearch, TagSearch &tagResult);
   std::string pool;
   std::map<std::string, BucketTag> elements;
@@ -143,8 +144,8 @@ public:
 
   //  void tagSearch(const std::list<TagSearchInfo> &searchList, std::list<SearchResult> &result);
   /// alle Bedingungen oder-verknüpfen
-  std::list<SearchResult> tagSearch(const std::string &pool, const std::map<std::string, TagSearch> &searchList,
-                                    const std::set<int> &buckets, const std::string &groupName);
+  std::list<SearchResult> searchTags(const std::string &pool, const std::map<std::string, TagSearch> &searchList,
+                                     const std::set<int> &buckets, const std::string &groupName);
   /// tag info zu einem Dokument
   void tagInfo(DocId id, std::list<SearchResult> &result, DocInfo &info);
   /// document indo

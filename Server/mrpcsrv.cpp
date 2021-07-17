@@ -594,7 +594,11 @@ void ExecVisitor::visit(SearchDocument &obj) {
   for (auto i:obj.tags) {
     auto f = context.tagInfoCache.find(i.name());
     bool search = (f != context.tagInfoCache.end() and f->second.doSearch);
-    string id = i.name() + string(search ? "$$" : "");
+    string id = i.name();
+    id += string(search ? "$$" : "");
+    string key = "A";
+    if (bucketIt != context.bucketCache.end() and bucketIt->second.isBucketTag(i.name()))
+      key = "Z";  // Buckets immer am Ende der Suchliste
 
     auto c = i.content();
     std::string o = "=";
@@ -609,6 +613,7 @@ void ExecVisitor::visit(SearchDocument &obj) {
         c.erase(0, 1);
       }
     }
+    key += id;
     if (search) {
       wstring n = mobs::to_wstring(c);
       std::wstring::const_iterator it = n.begin();
@@ -617,26 +622,34 @@ void ExecVisitor::visit(SearchDocument &obj) {
         string result;
         it = mobs::to7Up(it, n.end(), result);
         LOG(LM_INFO, "NNN " << c << " -> " << result);
+        uint ln = result.length();
+        if (ln > 9)
+          ln = 9;
+        key += cnt;
         if (o == "=") {
-          tagSearch[id + cnt].tagOpList.emplace(result + "%", "LIKE");
-          tagSearch[id + cnt].tagName = id;
+          key[0] = 'L' - ln;
+          tagSearch[key].tagOpList.emplace(result + "%", "LIKE");
+          tagSearch[key].tagName = id;
           cnt++;
         }
         else {
-          tagSearch[id].tagOpList.emplace(result, o);
-          tagSearch[id].tagName = id;
+          key[0] = 'M';
+          tagSearch[key].tagOpList.emplace(result, o);
+          tagSearch[key].tagName = id;
         }
       }
     } else {
-      tagSearch[id].tagName = id;
-      tagSearch[id].tagOpList.emplace(c, o);
+      if (o != "=")
+        key[0] = 'M';
+      tagSearch[key].tagName = id;
+      tagSearch[key].tagOpList.emplace(c, o);
     }
   }
 
   LOG(LM_INFO, "TAGSEARCH");
   for (auto &i:tagSearch) {
     for (auto &j:i.second.tagOpList) {
-      LOG(LM_INFO, "TAG " << i.second.tagName << " " << j.second << " " << j.first);
+      LOG(LM_INFO, "TAG [" << i.first << "] " << i.second.tagName << " " << j.second << " " << j.first);
     }
   }
 
@@ -670,7 +683,7 @@ void ExecVisitor::visit(SearchDocument &obj) {
   else
     buckets.insert(0);
 
-  list<SearchResult> result = store->tagSearch(pool, tagSearch, buckets, context.cacheGroupName);
+  list<SearchResult> result = store->searchTags(pool, tagSearch, buckets, context.cacheGroupName);
 
   map<TagId, string> tagNames;  // TODO cache in tagSearch mitverwenden
   tagNames[0] = "prim$$";

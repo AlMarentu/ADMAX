@@ -427,8 +427,8 @@ std::string Filestore::tagName(TagId id) {
 
 
 std::list<SearchResult>
-Filestore::tagSearch(const std::string &pool, const std::map<std::string, TagSearch> &searchList,
-                     const std::set<int> &buckets, const std::string &groupName) {
+Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSearch> &searchList,
+                      const std::set<int> &buckets, const std::string &groupName) {
   LOG(LM_INFO, "search ");
   std::list<SearchResult> result;
   TagId groupId = 0;
@@ -833,6 +833,13 @@ int BucketPool::getTokenList(const TagSearch &tagSearch, TagSearch &tagResult) {
     }
   }
   return it->second.prio;
+}
+
+bool BucketPool::isBucketTag(const std::string &tagName) {
+  auto it = elements.find(tagName);
+  if (it == elements.end())
+    return false;
+  return it->second.prio > 0;
 }
 
 // return: store in bucket
