@@ -430,6 +430,8 @@ std::list<SearchResult>
 Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSearch> &searchList,
                       const std::set<int> &buckets, const std::string &groupName) {
   LOG(LM_INFO, "search ");
+  std::chrono::system_clock::time_point begin = std::chrono::system_clock::now();
+  std::chrono::system_clock::time_point now;
   std::list<SearchResult> result;
   TagId groupId = 0;
   if (not groupName.empty())
@@ -508,6 +510,8 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
       query << Q::AndEnd;
 
       auto cursor = dbi.query(ti, query);
+      now = std::chrono::system_clock::now();
+      LOG(LM_INFO, "TIME " << std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count());
       while (not cursor->eof()) {
         dbi.retrieve(ti, cursor);
         LOG(LM_INFO, "Z " << ti.to_string());
@@ -520,6 +524,8 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
         }
         cursor->next();
       }
+      now = std::chrono::system_clock::now();
+      LOG(LM_INFO, "TIME " << std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count());
       start = false;
       LOG(LM_INFO, "QSIZE " << docIds.size() << " " << cursor->pos() << " " << docIdsPrim.size());
       if (i.second.primary) {
@@ -553,6 +559,8 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
         dbi.retrieve(tig, cursor);
         docIds.insert(tig.docId());
       }
+      now = std::chrono::system_clock::now();
+      LOG(LM_INFO, "TIME " << std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count());
     }
     if (bucket != 0 or buckets.size() == 1)
       docList.insert(docList.end(), docIds.begin(), docIds.end());
@@ -562,6 +570,8 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
     return result;
 
   LOG(LM_INFO, "found " << docList.size() << " documents " << docIdsPrim.size() << " primaryId");
+  now = std::chrono::system_clock::now();
+  LOG(LM_INFO, "TIME " << std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count());
 
   Q query2;
   query2 << Q::AndBegin << ti.active.QiEq(true) << ti.docId.QiIn(docList) << Q::AndEnd;
@@ -580,6 +590,8 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
       result.emplace_front(r);  // thus primary is sorted first
     }
   }
+  now = std::chrono::system_clock::now();
+  LOG(LM_INFO, "TIME " << std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count());
   return result;
 }
 

@@ -625,17 +625,16 @@ void ExecVisitor::visit(SearchDocument &obj) {
         uint ln = result.length();
         if (ln > 9)
           ln = 9;
-        key += cnt;
         if (o == "=") {
           key[0] = 'L' - ln;
-          tagSearch[key].tagOpList.emplace(result + "%", "LIKE");
-          tagSearch[key].tagName = id;
+          tagSearch[key + cnt].tagOpList.emplace(result + "%", "LIKE");
+          tagSearch[key + cnt].tagName = id;
           cnt++;
         }
         else {
           key[0] = 'M';
-          tagSearch[key].tagOpList.emplace(result, o);
-          tagSearch[key].tagName = id;
+          tagSearch[key + cnt].tagOpList.emplace(result, o);
+          tagSearch[key + cnt].tagName = id;
         }
       }
     } else {
