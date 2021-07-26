@@ -31,11 +31,13 @@
 #include "mrpc.h"
 
 /*
+ * use docsrv
  * db.DMGR_Tag.createIndex({ tagId:1, active:1, content:1 })
- * db.DMGR_Tag.createIndex({ docId:1 })
+ * db.DMGR_Tag.createIndex({ docId:1, tagId:1, active:1 })
  * db.DMGR_TagInfo.createIndex({ name:1, pool:1, bucket:1 }, { unique: true })
  * db.DMGR_BucketInfo.createIndex({ pool:1, tok1:1, tok2:1, tok3:1 })
  *
+ * db.DMGR_Tag.getIndexes()
  */
 
 class DMGR_Document : virtual public mobs::ObjectBase
@@ -682,7 +684,7 @@ void Filestore::getDocInfo(DocId id, DocInfo &doc) {
   doc.creationInfo = dbd.creationInfo();
 }
 
-void Filestore::tagInfo(DocId id, std::list<SearchResult> &result, DocInfo &doc) {
+void Filestore::getTagInfo(DocId id, std::list<SearchResult> &result, DocInfo &doc) {
   LOG(LM_INFO, "info ");
   result.clear();
 

@@ -468,7 +468,7 @@ void ExecVisitor::visit(GetDocument &obj) {
   DocInfo docInfo;
   docInfo.id = obj.docId();
   if (obj.allInfos())
-    store->tagInfo(obj.docId(), result, docInfo);
+    store->getTagInfo(obj.docId(), result, docInfo);
   else
     store->getDocInfo(obj.docId(), docInfo);
 
@@ -696,10 +696,16 @@ void ExecVisitor::visit(SearchDocument &obj) {
     r.docId(it->docId);
     for (auto it2 = it; it2 != result.cend(); it2++) {
       if (it2->docId == it->docId) {
-        auto &inf = r.tags[mobs::MemBaseVector::nextpos];
         auto tn = tagNames.find(it2->tagId);
         if (tn == tagNames.end())
           tn = tagNames.emplace(it2->tagId, store->tagName(it2->tagId)).first;
+//        if (tn->second == "$creation") {
+//          mobs::MTime t;
+//          if (mobs::string2x(it2->tagContent, t))
+//           r.creationTime(t);
+//          continue;
+//        }
+        auto &inf = r.tags[mobs::MemBaseVector::nextpos];
         inf.name(tagNames[it2->tagId]);
         inf.content(it2->tagContent);
       }
@@ -796,6 +802,9 @@ void ExecVisitor::visit(SaveDocument &obj) {
         tagTmp.emplace_back(t.name(), value);
       }
       std::list<TagInfo> tagInfo;
+      std::string creat;
+      if (context.tagInfoCache.find("$creation") != context.tagInfoCache.end())
+        creat = mobs::to_string_gmt(docInfo.creation);
 
       if (bucketIt != context.bucketCache.cend()) {
         // Bucket auf Vollständigkeit prüfen
@@ -830,12 +839,19 @@ void ExecVisitor::visit(SaveDocument &obj) {
           } else
             store->insertTag(tagInfo, pool, i.name, i.content);
         }
+        if (not creat.empty()) {
+          if (bucket == -1)
+            bucket = store->findBucket(pool, buckTok);
+          store->insertTag(tagInfo, pool, "$creation", creat, bucket);
+        }
       }
       else
       {
         for (auto &i:tagTmp)
           store->insertTag(tagInfo, pool, i.name, i.content);
-      }
+        if (not creat.empty())
+          store->insertTag(tagInfo, pool, "$creation", creat);
+        }
 
       store->newDocument(docInfo, tagInfo, 0/*groupId*/);
     }
