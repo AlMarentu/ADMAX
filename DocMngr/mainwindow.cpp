@@ -118,8 +118,8 @@ public:
   std::vector<std::string> content; // bzgl. ButtonGroup
   QLineEdit *l1 = nullptr;
   QLineEdit *l2 = nullptr;
-  QDateEdit *d1 = nullptr;
-  QDateEdit *d2 = nullptr;
+  QDateTimeEdit *d1 = nullptr;
+  QDateTimeEdit *d2 = nullptr;
   QCheckBox *c1 = nullptr;
   QButtonGroup *bg = nullptr;
 };
@@ -131,6 +131,7 @@ public:
   bool isDate = false;
   bool groupBy = false;
   bool groupRepeat = false;
+  std::string form;
 };
 
 class ActionTemplate {
@@ -220,10 +221,26 @@ bool SearchTag::evaluate(mobs::MemberVector<DocumentTags> &tList, bool search) {
     } else if (d1) {
       if (c1 and not c1->isChecked())
         return true;
-      std::string von = d1->date().toString(Qt::ISODate).toStdString();
+      LOG(LM_INFO, "DTF " << d1->displayFormat().toStdString());
+      std::string von;
       std::string bis;
-      if (d2)
-        bis = d2->date().toString(Qt::ISODate).toStdString();
+      if (d1->displayFormat().contains('H')) {
+        von = d1->dateTime().toUTC().toString(Qt::ISODate).toStdString();
+        if (d2) {
+          int64_t bs = 0;
+          if (d1->displayFormat().contains('S'))
+            bs = 0;
+          else if (d1->displayFormat().contains('M'))
+            bs = 59;
+          else
+            bs = 3599;
+          bis = d2->dateTime().addSecs(bs).toUTC().toString(Qt::ISODate).toStdString();
+        }
+      } else {
+        von = d1->date().toString(Qt::ISODate).toStdString();
+        if (d2)
+          bis = d2->date().toString(Qt::ISODate).toStdString();
+      }
       if (von.empty())
         von.swap(bis);
       if (von.empty())
@@ -356,8 +373,10 @@ void MainWindow::initTags(const TemplateInfo &templateInfo) {
       }
       auto &dt = currentTemplate.tableDisplay[t.name()];
       dt.maskName = n;
-      if (t.type() == TagDate)
+      if (t.type() == TagDate) {
         dt.isDate = true;
+        dt.form = t.format();
+      }
       else if (t.type() == TagDisplay and not t.regex().empty() and not t.format().empty()) {
         dt.formatter.insertPattern(mobs::to_wstring(t.regex()), mobs::to_wstring(t.format()));
       }
@@ -387,6 +406,7 @@ void MainWindow::initTags(const TemplateInfo &templateInfo) {
     currentTemplate.layout->addRow(sTag->maskName, layout1);
     currentTemplate.searchTags.emplace_back(sTag);
   }
+  bool dateSelect = true;
   for (auto &t:templateInfo.tags) {
     if (t.type() == TagDisplay)
       continue;
@@ -442,23 +462,32 @@ void MainWindow::initTags(const TemplateInfo &templateInfo) {
       case TagDate: {
         sTag->tags.emplace_back(t.name());
         auto layout1 = new QGridLayout(parent);
-        sTag->d1 = new QDateEdit(parent);
+        if (t.format().empty())
+          sTag->d1 = new QDateEdit(parent);
+        else
+          sTag->d1 = new QDateTimeEdit(parent);
         sTag->d1->setCalendarPopup(true);
         sTag->d1->setMinimumDate(QDate::currentDate().addYears(-40));
         sTag->d1->setMaximumDate(QDate::currentDate().addYears(+20));
         sTag->d1->setDate(QDate::currentDate());
         layout1->addWidget(sTag->d1, 0, 1);
+        sTag->c1 = new QCheckBox(sTag->d1);
+        sTag->c1->setChecked(dateSelect);
         if (templateInfo.type() == TemplateSearch) {
           layout1->addWidget(new QLabel("-", sTag->d1), 0, 2);
-          sTag->d2 = new QDateEdit(parent);
+          if (t.format().empty()) {
+            sTag->d2 = new QDateEdit(parent);
+          } else
+            sTag->d2 = new QDateTimeEdit(parent);
           sTag->d2->setCalendarPopup(true);
           sTag->d2->setMinimumDate(QDate::currentDate().addYears(-40));
           sTag->d2->setMaximumDate(QDate::currentDate().addYears(+20));
           sTag->d2->setDate(QDate::currentDate());
           layout1->addWidget(sTag->d2, 0, 3);
+          sTag->d1->setEnabled(dateSelect);
+          sTag->d2->setEnabled(dateSelect);
+          dateSelect = false;
         }
-        sTag->c1 = new QCheckBox(sTag->d1);
-        sTag->c1->setChecked(true);
         connect(sTag->c1, &QCheckBox::stateChanged, [this, sTag] {
           sTag->d1->setEnabled(sTag->c1->isChecked());
           if (sTag->d2) sTag->d2->setEnabled(sTag->c1->isChecked());
@@ -758,9 +787,12 @@ void MainWindow::searchDocument() {
             LOG(LM_INFO, "T " << j.name() << "=" << j.content());
             std::wstring value = mobs::to_wstring(j.content());
             if (info->second.isDate) {
-              auto d = QDate::fromString(j.content().c_str(), Qt::ISODate);
+              auto d = QDateTime::fromString(j.content().c_str(), Qt::ISODate);
               LOG(LM_INFO, "DATE " << d.toString(Qt::DefaultLocaleShortDate).toStdString());
-              value = d.toString(Qt::DefaultLocaleShortDate).toStdWString();
+              if (info->second.form.empty())
+                 value = d.date().toString(Qt::DefaultLocaleShortDate).toStdWString();
+              else
+                 value = d.toLocalTime().toString(Qt::DefaultLocaleShortDate).toStdWString();
             } else if (not info->second.formatter.empty()) {
               std::wstring result;
               if (info->second.formatter.format(value, result))
