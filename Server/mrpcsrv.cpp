@@ -191,8 +191,9 @@ string SessionContext::setTemplate(const string &templateName) {
 // Worker-Context mit XML-Parser
 class XmlInput : public mobs::XmlReader {
 public:
-  explicit XmlInput(wistream &str, mobs::XmlWriter &res, mobs::CryptIstrBuf &stbi, mobs::CryptOstrBuf &stbo, int tId, MRpcServer *s)
-          : XmlReader(str), xmlResult(res), streambufI(stbi), streambufO(stbo), taskId(tId), server(s) { }
+  explicit XmlInput(wistream &str, mobs::XmlWriter &res, mobs::CryptIstrBuf &stbi, mobs::CryptOstrBuf &stbo, int tId,
+                    MRpcServer *s, const string &c)
+          : XmlReader(str), xmlResult(res), streambufI(stbi), streambufO(stbo), taskId(tId), server(s), conName(c) { }
   ~XmlInput() { if (ctx) ctx->release(); }
 
   void StartTag(const std::string &element) override {
@@ -344,6 +345,7 @@ public:
   DocInfo attachmentInfo{};
   int64_t attachmentRefId = 0;
   string attachmentError; // if set, don#t save and return this message
+  string conName;
 };
 
 
@@ -463,14 +465,14 @@ void ExecVisitor::visit(GetDocument &obj) {
   TRACE("");
   if (not m_xi.ctx)
     THROW("missing session context");
-  auto store = Filestore::instance();
+  Filestore store(m_xi.conName);
   list<SearchResult> result;
   DocInfo docInfo;
   docInfo.id = obj.docId();
   if (obj.allInfos())
-    store->getTagInfo(obj.docId(), result, docInfo);
+    store.getTagInfo(obj.docId(), result, docInfo);
   else
-    store->getDocInfo(obj.docId(), docInfo);
+    store.getDocInfo(obj.docId(), docInfo);
 
   DocumenType docType;
   switch(docInfo.docType) {
@@ -506,7 +508,7 @@ void ExecVisitor::visit(GetDocument &obj) {
       auto &inf = doc.info.tags[mobs::MemBaseVector::nextpos];
       auto tn = tagNames.find(i.tagId);
       if (tn == tagNames.end())
-        tn = tagNames.emplace(i.tagId, store->tagName(i.tagId)).first;
+        tn = tagNames.emplace(i.tagId, store.tagName(i.tagId)).first;
       inf.name(tagNames[i.tagId]);
       inf.content(i.tagContent);
     }
@@ -531,7 +533,7 @@ void ExecVisitor::visit(GetDocument &obj) {
     ostream ostb(&cry);
     std::streamsize a = m_xi.streambufO.getOstream().tellp();
 
-    store->readFile(docInfo.fileName, ostb);
+    store.readFile(docInfo.fileName, ostb);
     cry.finalize();
     std::streamsize b = m_xi.streambufO.getOstream().tellp();
     if (b - a != AES_BYTES(docInfo.fileSize))
@@ -544,7 +546,7 @@ void ExecVisitor::visit(GetDocument &obj) {
     buf.resize(docInfo.fileSize);
     CCBuf ccBuf(buf);
     ostream buffer(&ccBuf);
-    store->readFile(docInfo.fileName, buffer);
+    store.readFile(docInfo.fileName, buffer);
 
 //      buffer << file.rdbuf();
 //      file.close();
@@ -556,7 +558,7 @@ void ExecVisitor::visit(GetDocument &obj) {
       auto &inf = doc.info.tags[mobs::MemBaseVector::nextpos];
       auto tn = tagNames.find(i.tagId);
       if (tn == tagNames.end())
-        tn = tagNames.emplace(i.tagId, store->tagName(i.tagId)).first;
+        tn = tagNames.emplace(i.tagId, store.tagName(i.tagId)).first;
       inf.name(tagNames[i.tagId]);
       inf.content(i.tagContent);
     }
@@ -577,11 +579,11 @@ void ExecVisitor::visit(SearchDocument &obj) {
   LOG(LM_INFO, "COMMAND " << obj.to_string());
 
   SessionContext &context = *m_xi.ctx;
-  auto store = Filestore::instance();
+  Filestore store(m_xi.conName);
   if (context.tInfo.empty())
-    store->loadTemplates(context.tInfo);
+    store.loadTemplates(context.tInfo);
   if (context.bucketCache.empty())
-    store->loadBuckets(context.bucketCache);
+    store.loadBuckets(context.bucketCache);
 
   // TODO Template prüfen (=Rechte), fixed Tags hinzu
   string pool = context.setTemplate(obj.templateName());
@@ -674,7 +676,7 @@ void ExecVisitor::visit(SearchDocument &obj) {
       }
     }
     if (not primarySearch or not tagSearchBuckets.empty())
-      store->bucketSearch(pool, tagSearchBuckets, buckets);
+      store.bucketSearch(pool, tagSearchBuckets, buckets);
 
     if (primarySearch)
       buckets.insert(0);
@@ -682,7 +684,7 @@ void ExecVisitor::visit(SearchDocument &obj) {
   else
     buckets.insert(0);
 
-  list<SearchResult> result = store->searchTags(pool, tagSearch, buckets, context.cacheGroupName);
+  list<SearchResult> result = store.searchTags(pool, tagSearch, buckets, context.cacheGroupName);
 
   map<TagId, string> tagNames;  // TODO cache in tagSearch mitverwenden
   tagNames[0] = "prim$$";
@@ -698,7 +700,7 @@ void ExecVisitor::visit(SearchDocument &obj) {
       if (it2->docId == it->docId) {
         auto tn = tagNames.find(it2->tagId);
         if (tn == tagNames.end())
-          tn = tagNames.emplace(it2->tagId, store->tagName(it2->tagId)).first;
+          tn = tagNames.emplace(it2->tagId, store.tagName(it2->tagId)).first;
 //        if (tn->second == "$creation") {
 //          mobs::MTime t;
 //          if (mobs::string2x(it2->tagContent, t))
@@ -726,11 +728,11 @@ void ExecVisitor::visit(SaveDocument &obj) {
   m_xi.attachmentRefId = obj.refId();
   try {
     SessionContext &context = *m_xi.ctx;
-    auto store = Filestore::instance();
+    Filestore store(m_xi.conName);
     if (context.tInfo.empty())
-      store->loadTemplates(context.tInfo);
+      store.loadTemplates(context.tInfo);
     if (context.bucketCache.empty())
-      store->loadBuckets(context.bucketCache);
+      store.loadBuckets(context.bucketCache);
     // TODO Template prüfen (=Rechte), fixed Tags hinzu, nur Systemuser darf ohne Template speichern
     string pool = context.setTemplate(obj.templateName());
     if (pool.empty())
@@ -743,7 +745,7 @@ void ExecVisitor::visit(SaveDocument &obj) {
 
     TagId groupId = 0;
     if (not context.cacheGroupName.empty())
-      groupId = store->findTag(pool, context.cacheGroupName);
+      groupId = store.findTag(pool, context.cacheGroupName);
 
     auto const bucketIt = context.bucketCache.find(pool);
 
@@ -834,26 +836,26 @@ void ExecVisitor::visit(SaveDocument &obj) {
         for (auto &i:tagTmp) {
           if (i.inBucket) {
             if (bucket == -1)
-              bucket = store->findBucket(pool, buckTok);
-            store->insertTag(tagInfo, pool, i.name, i.content, bucket);
+              bucket = store.findBucket(pool, buckTok);
+            store.insertTag(tagInfo, pool, i.name, i.content, bucket);
           } else
-            store->insertTag(tagInfo, pool, i.name, i.content);
+            store.insertTag(tagInfo, pool, i.name, i.content);
         }
         if (not creat.empty()) {
           if (bucket == -1)
-            bucket = store->findBucket(pool, buckTok);
-          store->insertTag(tagInfo, pool, "$creation", creat, bucket);
+            bucket = store.findBucket(pool, buckTok);
+          store.insertTag(tagInfo, pool, "$creation", creat, bucket);
         }
       }
       else
       {
         for (auto &i:tagTmp)
-          store->insertTag(tagInfo, pool, i.name, i.content);
+          store.insertTag(tagInfo, pool, i.name, i.content);
         if (not creat.empty())
-          store->insertTag(tagInfo, pool, "$creation", creat);
+          store.insertTag(tagInfo, pool, "$creation", creat);
         }
 
-      store->newDocument(docInfo, tagInfo, 0/*groupId*/);
+      store.newDocument(docInfo, tagInfo, 0/*groupId*/);
     }
   } catch (MrpcException &e) {
     LOG(LM_ERROR, "Mrpc-Exception " << e.what());
@@ -869,10 +871,10 @@ void ExecVisitor::visit(GetConfig &obj) {
   if (not m_xi.ctx)
     THROW("missing session context");
   SessionContext &context = *m_xi.ctx;
-  auto store = Filestore::instance();
+  Filestore store(m_xi.conName);
   ConfigResult co;
   context.tInfo.clear();
-  store->loadTemplates(context.tInfo);
+  store.loadTemplates(context.tInfo);
   // TODO Rechte filtern: nur erlaubte Templates liefern
   for (auto t:context.tInfo) {
     co.templates[mobs::MemBaseVector::nextpos].doCopy(t);
@@ -893,9 +895,9 @@ void ExecVisitor::visit(Dump &obj) {
   if (not m_xi.ctx)
     THROW("missing session context");
   LOG(LM_INFO, "Dump DB");
-  auto store = Filestore::instance();
+  Filestore store(m_xi.conName);
   std::vector<DocId> result;
-  store->allDocs(result);
+  store.allDocs(result);
   for (auto i:result) {
     GetDocument gd;
     gd.docId(i);
@@ -913,6 +915,10 @@ void ExecVisitor::visit(Dump &obj) {
 #define TLOG(l, x) LOG(l, 'T' << id << ' ' << x)
 
 void MRpcServer::worker_thread(int id, MRpcServer *server) {
+  string con = "docsrv";
+  if (id > 0)
+    con += to_string(id);
+
   for (;;) {
     try {
       TLOG(LM_INFO, "WAITING");
@@ -944,7 +950,7 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
 
 
       // XML-Parser erledigt die eigentliche Arbeit in seinen Callback-Funktionen
-      XmlInput xr(x2in, xf, streambufI, streambufO, id, server);
+      XmlInput xr(x2in, xf, streambufI, streambufO, id, server, con);
       xr.readTillEof(false);
 
 
@@ -975,13 +981,13 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
           cry.hashAlgorithm("sha1");
           istream istr(&cry);
 
-          auto store = Filestore::instance();
+          Filestore store(xr.conName);
 
           if (xr.attachmentError.empty()) {
-            xr.attachmentInfo.fileName = store->writeFile(istr, xr.attachmentInfo);
+            xr.attachmentInfo.fileName = store.writeFile(istr, xr.attachmentInfo);
             xr.attachmentInfo.checkSum = cry.hashStr();
             LOG(LM_INFO, "HASH " << cry.hashStr());
-            store->documentCreated(xr.attachmentInfo);
+            store.documentCreated(xr.attachmentInfo);
             if (cry.bad())
               THROW("error while encrypting attachment");
             LOG(LM_INFO, "Attachment saved");
@@ -1039,13 +1045,16 @@ void MRpcServer::server() {
   if (tcpAccept.initService(service) < 0)
     THROW("Service not started");
 
+  Filestore::newDbInstance("docsrv1");
+  Filestore::newDbInstance("docsrv2");
+
   // TODO zu Debug-Zweckem keine Threads
-//  std::thread t1(worker_thread, 1, this);
-//  std::thread t2(worker_thread, 2, this);
+  std::thread t1(worker_thread, 1, this);
+  std::thread t2(worker_thread, 2, this);
   worker_thread(0, this);
 
-//  t1.join();
-//  t2.join();
+  t1.join();
+  t2.join();
 
 
 
@@ -1120,6 +1129,8 @@ int main(int argc, char* argv[]) {
       srv.genKey();
       exit(0);
     }
+    mobs::DatabaseManager dbmgr; // darf nur einmalig eingerichtet werden und muss bis zum letzten Verwenden einer Datenbank bestehen bleiben
+    Filestore::setBase(base);
 
     ifstream k(STRSTR(keystore << '/' <<  keyname << "_priv.pem"));
     if (not k.is_open()) {
@@ -1128,22 +1139,21 @@ int main(int argc, char* argv[]) {
     }
     k.close();
 
-    Filestore::instance(base);
     if (not configfile.empty()) {
-      Filestore::instance()->loadTemplatesFromFile(configfile);
+      Filestore().loadTemplatesFromFile(configfile);
       return 0;
     }
 #ifndef NDEBUG
-    auto store = Filestore::instance();
+    Filestore store;
     ConfigResult co;
     list<TemplateInfo> tinf;
-    store->loadTemplates(tinf);
+    store.loadTemplates(tinf);
     for (auto t:tinf) {
       LOG(LM_INFO, "Config: " << t.to_string());
     }
 
 //    map<string, BucketPool> buckets;
-//    store->loadBuckets(buckets);
+//    store.loadBuckets(buckets);
 #endif
     srv.server();
 

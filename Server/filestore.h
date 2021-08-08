@@ -120,7 +120,9 @@ public:
  */
 class Filestore {
 public:
-  static Filestore *instance(const std::string &basedir = "");
+  explicit Filestore();
+  explicit Filestore(std::string con);
+  static void newDbInstance(const std::string &con);
 
   std::string writeFile(std::istream &source, const DocInfo &info);
   void readFile(const std::string &file, std::ostream &dest);
@@ -159,11 +161,11 @@ public:
 
   void loadTemplatesFromFile(const std::string &filename);
 
+  static void setBase(const std::string &basedir);
+
 private:
-  explicit Filestore(const std::string &basedir);
-  std::string base;
-  static Filestore *store;
-  static mobs::DatabaseManager dbMgr;
+  static std::string base;
+  std::string conName;
 
 };
 

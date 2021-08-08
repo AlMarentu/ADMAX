@@ -25,6 +25,7 @@
 #include "mobs/querygenerator.h"
 #include <sys/stat.h>
 #include <set>
+#include <utility>
 #include "mobs/dbifc.h"
 #include "mobs/logging.h"
 
@@ -136,47 +137,55 @@ public:
 
 
 
-Filestore::Filestore(const std::string &basedir)  : base(basedir) {
-  if (store)
-    throw std::runtime_error("Filestore already exists");
+void Filestore::setBase(const std::string &basedir) {
+  base = basedir;
   // Datenbank Verbindung einrichten
+  newDbInstance("docsrv");
 
-  std::string dbname;
-  std::string db = "sqlite://";
-  db += basedir;
-  db += "/sqlite.db";
-
-  if (basedir.find("mongodb://") == 0) {
-    db = basedir;
-    dbname = "docsrv";
-  }
-
-  // Datenbank-Verbindungen
-  dbMgr.addConnection("docsrv", mobs::ConnectionInformation(db, dbname));
   DMGR_Counter c;
   DMGR_Document d;
   DMGR_Tag t;
   DMGR_TagInfo p;
   DMGR_TemplatePool tp;
   DMGR_BucketPool bp;
-  auto dbi = dbMgr.getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
   dbi.structure(c);
   dbi.structure(d);
   dbi.structure(t);
   dbi.structure(p);
   dbi.structure(tp);
   dbi.structure(bp);
+}
 
+void Filestore::newDbInstance(const std::string &con) {
+  std::string dbname;
+  std::string db = "sqlite://";
+  db += base;
+  db += "/sqlite.db";
+
+  if (base.find("mongodb://") == 0) {
+    db = base;
+    dbname = "docsrv";
+  }
+
+  // Datenbank-Verbindungen
+  mobs::DatabaseManager::instance()->addConnection(con, mobs::ConnectionInformation(db, dbname));
+}
+
+Filestore::Filestore() : conName("docsrv") {
+}
+
+
+Filestore::Filestore(std::string con) : conName(std::move(con)) {
 
 }
 
-Filestore *Filestore::store = nullptr;
-mobs::DatabaseManager Filestore::dbMgr;  // singleton, darf nur einmalig eingerichtet werden und muss bis zum letzten Verwenden einer Datenbank bestehen bleiben
+std::string Filestore::base;
 
 
 void Filestore::newDocument(DocInfo &doc, const std::list<TagInfo> &tags, int groupId) {
   LOG(LM_INFO, "newDocument ");
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   static DMGR_Counter cntr;
   if (cntr.id() != DMGR_Counter::CntrDocument) {
     cntr.id(DMGR_Counter::CntrDocument);
@@ -256,7 +265,7 @@ void Filestore::newDocument(DocInfo &doc, const std::list<TagInfo> &tags, int gr
 
 void Filestore::documentCreated(DocInfo &info) {
   LOG(LM_INFO, "documentCreated " << info.id << " " << info.fileName);
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
 
   DMGR_Document dbd;
   dbd.id(info.id);
@@ -270,16 +279,9 @@ void Filestore::supersedeDocument(DocInfo &doc, DocId supersedeId) {
 
 }
 
-Filestore *Filestore::instance(const std::string &basedir) {
-  if (not store)
-    store = new Filestore(basedir);
-  return store;
-}
-
-
 std::string Filestore::writeFile(std::istream &source, const DocInfo &info) {
   LOG(LM_INFO, "writeFile ");
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   if (dbi.getConnection()->connectionType() == u8"Mongo") {
     return dbi.getConnection()->uploadFile(dbi, source);
   } else {
@@ -300,7 +302,7 @@ std::string Filestore::writeFile(std::istream &source, const DocInfo &info) {
 
 void Filestore::readFile(const std::string &name, std::ostream &dest) {
   LOG(LM_INFO, "readFile " << name);
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   if (dbi.getConnection()->connectionType() == u8"Mongo") {
     return dbi.getConnection()->downloadFile(dbi, name, dest);
   } else {
@@ -321,7 +323,7 @@ int Filestore::findBucket(const std::string &pool, const std::vector<std::string
   std::string s;
   std::for_each(bucketToken.begin(), bucketToken.end(), [&s](const std::string &i){ s += i; s += " "; });
   LOG(LM_INFO, "findBucket " << s );
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   DMGR_BucketInfo binfo;
   binfo.pool(pool);
   switch (bucketToken.size()) {
@@ -360,7 +362,7 @@ int Filestore::findBucket(const std::string &pool, const std::vector<std::string
 void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &pool, const std::string &tagName,
                           const std::string &content, int bucket) {
   LOG(LM_INFO, "insertTag " << tagName << "[" << bucket << "] " << content);
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   DMGR_TagInfo tpool;
   tpool.pool(pool);
   tpool.name(tagName);
@@ -393,7 +395,7 @@ void Filestore::insertTag(std::list<TagInfo> &tags, const std::string &pool, con
 
 TagId Filestore::findTag(const std::string &pool, const std::string &tagName, int bucket) {
   LOG(LM_INFO, "findTag " << tagName);
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   DMGR_TagInfo tpool;
   tpool.pool(pool);
   tpool.name(tagName);
@@ -412,7 +414,7 @@ TagId Filestore::findTag(const std::string &pool, const std::string &tagName, in
 
 std::string Filestore::tagName(TagId id) {
   LOG(LM_INFO, "tagName " << id);
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   DMGR_TagInfo tpool;
   tpool.id(id);
   auto cursor = dbi.qbe(tpool);
@@ -439,7 +441,7 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
   if (not groupName.empty())
     groupId = findTag(pool, groupName);
 
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   DMGR_Tag ti;
 
   using Q = mobs::QueryGenerator;    // Erleichtert die Tipp-Arbeit
@@ -602,7 +604,7 @@ Filestore::bucketSearch(const std::string &pool, const std::map<int, TagSearch> 
   LOG(LM_INFO, "search ");
   result.clear();
 
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   DMGR_Tag ti;
 
   using Q = mobs::QueryGenerator;    // Erleichtert die Tipp-Arbeit
@@ -666,7 +668,7 @@ Filestore::bucketSearch(const std::string &pool, const std::map<int, TagSearch> 
 void Filestore::getDocInfo(DocId id, DocInfo &doc) {
   LOG(LM_INFO, "info ");
 
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
 
   DMGR_Document dbd;
   dbd.id(id);
@@ -688,7 +690,7 @@ void Filestore::getTagInfo(DocId id, std::list<SearchResult> &result, DocInfo &d
   LOG(LM_INFO, "info ");
   result.clear();
 
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
 
   DMGR_Document dbd;
   dbd.id(id);
@@ -728,7 +730,7 @@ void Filestore::allDocs(std::vector<DocId> &result) {
   LOG(LM_INFO, "all ");
   result.clear();
 
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
 
   DMGR_Document dbd;
   using Q = mobs::QueryGenerator;
@@ -740,7 +742,7 @@ void Filestore::allDocs(std::vector<DocId> &result) {
 }
 
 void Filestore::loadTemplates(std::list<TemplateInfo> &templates) {
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   using Q = mobs::QueryGenerator;
   Q query;
   DMGR_TemplatePool tp;
@@ -753,7 +755,7 @@ void Filestore::loadTemplates(std::list<TemplateInfo> &templates) {
 }
 
 void Filestore::loadBuckets(std::map<std::string, BucketPool> &buckets) {
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   using Q = mobs::QueryGenerator;
   Q query;
   DMGR_BucketPool bp;
@@ -783,7 +785,7 @@ void Filestore::loadBuckets(std::map<std::string, BucketPool> &buckets) {
 
 
 void Filestore::loadTemplatesFromFile(const std::string &filename) {
-  auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   std::ifstream input(filename);
   std::string buf;
   if (not input)
@@ -831,6 +833,7 @@ void Filestore::loadTemplatesFromFile(const std::string &filename) {
   }
 
 }
+
 
 int BucketPool::getTokenList(const TagSearch &tagSearch, TagSearch &tagResult) {
   auto it = elements.find(tagSearch.tagName);
