@@ -187,11 +187,15 @@ void Filestore::newDocument(DocInfo &doc, const std::list<TagInfo> &tags, int gr
   LOG(LM_INFO, "newDocument ");
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   static DMGR_Counter cntr;
-  if (cntr.id() != DMGR_Counter::CntrDocument) {
-    cntr.id(DMGR_Counter::CntrDocument);
-    dbi.load(cntr);
+  static std::mutex mutex;
+  {
+    std::lock_guard<std::mutex> guard(mutex);
+    if (cntr.id() != DMGR_Counter::CntrDocument) {
+      cntr.id(DMGR_Counter::CntrDocument);
+      dbi.load(cntr);
+    }
+    dbi.save(cntr);
   }
-  dbi.save(cntr);
 
   doc.id = cntr.counter();
   doc.supersedeId = 0;
@@ -244,11 +248,15 @@ void Filestore::newDocument(DocInfo &doc, const std::list<TagInfo> &tags, int gr
       }
     }
     static DMGR_Counter cntr;
-    if (cntr.id() != DMGR_Counter::CntrTag) {
-      cntr.id(DMGR_Counter::CntrTag);
-      dbi.load(cntr);
+    static std::mutex mutex;
+    {
+      std::lock_guard<std::mutex> guard(mutex);
+      if (cntr.id() != DMGR_Counter::CntrTag) {
+        cntr.id(DMGR_Counter::CntrTag);
+        dbi.load(cntr);
+      }
+      dbi.save(cntr);
     }
-    dbi.save(cntr);
     DMGR_Tag ti;
     ti.id(cntr.counter());
     ti.active(true);
@@ -469,10 +477,9 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
       LOG(LM_INFO, "SEARCH: " << i.second.tagName << "[" << bucket << "] " << id << " prim=" << i.second.primary);
       std::set<uint64_t> docIdsTmp;
       std::set<uint64_t> docIdsPrimTmp;
-      if (start and bucket and not docIdsPrim.empty()) { // bei buckets > 0 mit Primary vorinitialisieren
+      if (start and bucket and not docIdsPrim.empty())  // bei buckets > 0 mit Primary vorinitialisieren
         docIdsTmp = docIdsPrim;
-        start = false;
-      } else
+      else
         docIdsTmp.swap(docIds);
       if (i.second.primary)
         docIdsPrimTmp.swap(docIdsPrim);
