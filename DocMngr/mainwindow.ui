@@ -170,6 +170,7 @@
     </property>
     <addaction name="actionExit"/>
     <addaction name="actionServer"/>
+    <addaction name="actionprint"/>
    </widget>
    <widget class="QMenu" name="menuBearbeiten">
     <property name="title">
@@ -202,6 +203,14 @@
     <string>Server</string>
    </property>
   </action>
+  <action name="actionprint">
+   <property name="text">
+    <string>print</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+P</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
@@ -209,6 +218,9 @@
    <extends>QWidget</extends>
    <header>viewer.h</header>
    <container>1</container>
+   <slots>
+    <signal>print()</signal>
+   </slots>
   </customwidget>
  </customwidgets>
  <tabstops>
@@ -315,6 +327,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionprint</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>print()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>626</x>
+     <y>417</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>626</x>
+     <y>417</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>load()</slot>
@@ -325,5 +353,6 @@
   <slot>searchRowClicked(int,int)</slot>
   <slot>searchRowClicked(QTreeWidgetItem*,int)</slot>
   <slot>server()</slot>
+  <slot>print()</slot>
  </slots>
 </ui>

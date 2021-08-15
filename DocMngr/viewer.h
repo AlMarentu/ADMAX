@@ -57,6 +57,7 @@ public:
   void showPdfBuffer(const QByteArray &data);
   void showPicture(const QPixmap &pixmap);
   void clearViewer();
+  void print();
 private:
   void showDocument();
   void resizeEvent(QResizeEvent *event) override;

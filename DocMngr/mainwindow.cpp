@@ -939,6 +939,10 @@ void MainWindow::searchRowClicked(QTreeWidgetItem *item, int col) {
   }
 }
 
+void MainWindow::print() {
+  ui->widget->print();
+}
+
 void MainWindow::server() {
   QSettings obj("AlMarentu", "ADMAX");
 //  QString host = obj.value("main/host", "localhost:4444").toString();

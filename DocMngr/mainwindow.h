@@ -49,6 +49,7 @@ public slots:
   void server();
   void load();
   void save();
+  void print();
   void loadFile();
   void getDocument();
   void searchDocument();

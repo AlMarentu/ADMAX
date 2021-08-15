@@ -37,6 +37,8 @@
 #include <QScrollBar>
 #include <QPaintEvent>
 #include <QGridLayout>
+#include <QPrinter>
+#include <QPrintDialog>
 #include <string>
 #include "mobs/logging.h"
 
@@ -137,6 +139,8 @@ public:
       // ... error message ...
       return;
     }
+    LOG(LM_INFO, "RENDER " << dpi);
+    dpi = 200.0;
     QImage image = pdfPage->renderToImage(dpi, dpi);
 #else
     QSize sz(dpi * size.width() / 72.0, dpi * size.height() / 72.0);
@@ -198,6 +202,8 @@ public:
 void MyLabel::paintEvent(QPaintEvent *event) {
   if (not done) {
     LOG(LM_INFO, "painter " << page->pgNum << "  " << event->rect().x() << "," << event->rect().y() << " " << event->rect().width() << "x" << event->rect().height());
+    if (event->rect().height() < 4)
+      return;
     page->render(viewer->document, viewer->aktDpi);
     done = true;
   }
@@ -294,7 +300,7 @@ void Viewer::showPdfBuffer(const QByteArray &bytes) {
 void Viewer::showDocument() {
 
   ui->horizontalSliderZoom->setRange(20, 200);
-  ui->horizontalSliderZoom->setValue(150);
+//  ui->horizontalSliderZoom->setValue(100);
 
   auto widget = new QWidget(this);
   QPalette p = palette();
@@ -314,6 +320,11 @@ void Viewer::showDocument() {
 #ifdef USE_POPPLER
     page.docPage = data->document->page(i);
     page.size = page.docPage->pageSizeF();
+    if (i == 0) {
+      int dpi = 66.7 * ui->scrollArea->widget()->width() / page.size.width();
+      LOG(LM_INFO, "VV " << dpi << " " << ui->scrollArea->widget()->width() << " " << page.size.width());
+      ui->horizontalSliderZoom->setValue(dpi);
+    }
 #else
     page.size = data->document->pageSize(i);
 #endif
@@ -740,4 +751,109 @@ void Viewer::clearViewer() {
 
 }
 
+
+void Viewer::print() {
+  if (not data->document and data->pixmap.isNull())
+    return;
+
+  QPrinter printer(QPrinter::HighResolution);
+  if (data->document)
+    printer.setFromTo(1, data->pages.size());
+  QPrintDialog dialog(&printer, this);
+  dialog.setWindowTitle(tr("Print Document"));
+//  if (editor->textCursor().hasSelection())
+//    dialog.addEnabledOption(QAbstractPrintDialog::PrintSelection);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+//  printer.setOutputFileName("print.ps");
+  QPainter painter;
+  painter.begin(&printer);
+
+  if (data->document) {
+//  QPalette pal = palette();
+//  pal.setColor(QPalette::Background, Qt::white);
+    double dpi = 144.0;
+    int maxX = 0;
+    int maxY = 0;
+    bool first = true;
+    size_t a, b, s;
+    s = 1;
+    a = printer.fromPage();
+    b = printer.toPage();
+    if (a < 1) {
+      a = 1;
+      b = data->pages.size();
+    }
+    if (b > data->pages.size()) b = data->pages.size();
+    if (b < a) b = a;
+    if (printer.pageOrder() != QPrinter::FirstPageFirst) {
+      s = -s;
+      qSwap(a, b);
+    }
+    LOG(LM_INFO, "PPPP " << a << " .. " << b);
+    for (size_t i = a - 1; i != b; i += s) {
+      LOG(LM_INFO, "PRINT " << i);
+      auto &p = data->pages[i];
+      if (not first)
+        printer.newPage();
+      first = false;
+
+      //        QRectF imSz(dpi * p.size.width() / 72.0, dpi * p.size.height() / 72.0);
+      double dpix = 72.0 * printer.pageRect().width() / p.size.width();
+      double dpiy = 72.0 * printer.pageRect().height() / p.size.height();
+      LOG(LM_INFO, "DPI " << dpix << " x " << dpiy);
+      dpi = qMin(dpix, dpiy) * 0.96;
+#ifdef USE_POPPLER
+      Poppler::Page *pdfPage = p.docPage;
+      if (not pdfPage)
+        data->document->page(p.pgNum);  // Document starts at page 0
+      if (not pdfPage) {
+        // ... error message ...
+        return;
+      }
+
+      // Generate a QImage of the rendered page
+      QImage image = pdfPage->renderToImage(dpi, dpi);
+
+#else
+      QPdfDocumentRenderOptions opt;
+          QSize sz(dpi * p.size.width() / 72.0, dpi * p.size.height() / 72.0);
+          QImage image = data->document->render(p.pgNum, sz, opt);
+#endif
+      if (image.isNull()) {
+        // ... error message ...
+        continue;
+      }
+
+//      double xscale = printer.pageRect().width() / double(image.width());
+//      double yscale = printer.pageRect().height() / double(image.height());
+//      double scale = qMin(xscale, yscale);
+//      LOG(LM_INFO, "Scale " << scale << " " << xscale << " " << yscale << " x " << printer.pageRect().width() << " "
+//                            << image.width() << " y "
+//                            << printer.pageRect().height() << " " << image.height());
+//      LOG(LM_INFO, "PDF " << dpi * p.size.width() / 72.0);
+      //painter.scale(scale, scale);
+
+      painter.drawImage(printer.paperRect().x(), printer.paperRect().y(), image);
+
+#ifdef USE_POPPLER
+// after the usage, the page must be deleted
+//          delete pdfPage;
+#endif
+    }
+  } else { // pixmap
+    double xscale = printer.pageRect().width() / double(data->pixmap.width());
+    double yscale = printer.pageRect().height() / double(data->pixmap.height());
+    double scale = qMin(xscale, yscale);
+    LOG(LM_INFO, "Scale " << scale << " " << xscale << " " << yscale << " x " << printer.pageRect().width() << " "
+                          << data->pixmap.width() << " y "
+                          << printer.pageRect().height() << " " << data->pixmap.height());
+    painter.scale(scale, scale);
+    painter.drawPixmap(printer.paperRect().x(), printer.paperRect().y(), data->pixmap);
+  }
+  painter.end();
+
+
+}
 
