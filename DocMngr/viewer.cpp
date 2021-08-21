@@ -775,7 +775,7 @@ void Viewer::print() {
   dialog.setWindowTitle(tr("Print Document"));
   if (data->document and toPg > 1)
     dialog.setOptions(QAbstractPrintDialog::PrintDialogOptions(QAbstractPrintDialog::PrintCurrentPage +
-                                                               QAbstractPrintDialog::PrintToFile + QAbstractPrintDialog::PrintSelection +
+                                                               QAbstractPrintDialog::PrintToFile +
                                                                QAbstractPrintDialog::PrintPageRange + QAbstractPrintDialog::PrintShowPageSize));
   else
     dialog.setOptions(QAbstractPrintDialog::PrintDialogOptions(QAbstractPrintDialog::PrintToFile + QAbstractPrintDialog::PrintShowPageSize));
@@ -819,7 +819,7 @@ void Viewer::print() {
     LOG(LM_INFO, "PPPP " << a << " .. " << b);
     QProgressDialog progressDialog(tr("printing ..."), tr("cancel"), a, b, this);
     progressDialog.setMinimumDuration(300);
-    for (size_t i = a - 1; i != b; i += s) {
+    for (size_t i = a - 1; i != b -1 + s; i += s) {
       LOG(LM_INFO, "PRINT " << i);
       if (i != a)
       {
