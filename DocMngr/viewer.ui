@@ -75,7 +75,26 @@
           </widget>
          </item>
          <item>
-          <widget class="QSpinBox" name="spinBoxPage"/>
+          <widget class="QLineEdit" name="lineEditPage">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>40</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+          </widget>
          </item>
         </layout>
        </item>
@@ -204,22 +223,6 @@
     <hint type="destinationlabel">
      <x>0</x>
      <y>198</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>spinBoxPage</sender>
-   <signal>valueChanged(int)</signal>
-   <receiver>Viewer</receiver>
-   <slot>setPage(int)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>505</x>
-     <y>39</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>522</x>
-     <y>112</y>
     </hint>
    </hints>
   </connection>

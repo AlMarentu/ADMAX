@@ -39,6 +39,7 @@
 #include <QGridLayout>
 #include <QPrinter>
 #include <QPrintDialog>
+#include <QProgressDialog>
 #include <string>
 #include "mobs/logging.h"
 
@@ -64,7 +65,7 @@ public:
 //    LOG(LM_INFO, "FONT " << f.pointSizeF());
   }
   QRect getRect(const QRectF &r) {
-    return QRect(r.x() * width(), r.y() * height(), r.width() * width(), r.height() * height());
+    return { int(r.x() * width()), int(r.y() * height()), int(r.width() * width()), int(r.height() * height()) };
   }
   void rerender() {
     done = false;
@@ -85,9 +86,9 @@ public:
 #endif
   MyLabel *label;
   QWidget *widget = nullptr;
-  int fontSize = 0;
+  double fontSize = 0;
 
-  void rePos(double dpi) {
+  void rePos(double dpi) const {
     if (widget) {
 #ifdef USE_POPPLER
       auto rect = label->getRect(formField->rect());
@@ -123,11 +124,11 @@ public:
 #endif
   }
 
-  void resize(double dpi) {
+  void resize(double dpi) const {
     if (label) {
-      label->resize(dpi * size.width() / 72.0, dpi * size.height() / 72.0);
-      label->setMaximumSize(dpi * size.width() / 72.0, dpi * size.height() / 72.0);
-      label->setMinimumSize(dpi * size.width() / 72.0, dpi * size.height() / 72.0);
+      label->resize(int(dpi * size.width() / 72.0), int(dpi * size.height() / 72.0));
+      label->setMaximumSize(int(dpi * size.width() / 72.0), int(dpi * size.height() / 72.0));
+      label->setMinimumSize(int(dpi * size.width() / 72.0), int(dpi * size.height() / 72.0));
     }
   }
   void render(PdfDocument* document, double dpi) {
@@ -222,8 +223,8 @@ Viewer::Viewer(QWidget *parent) :
 
     ui->horizontalSliderZoom->setRange(20, 150);
     ui->horizontalSliderZoom->setValue(150);
-    connect(ui->scrollArea->verticalScrollBar(), SIGNAL(rangeChanged(int, int)), this, SLOT(vRange(int, int)));
-    connect(ui->scrollArea->horizontalScrollBar(), SIGNAL(rangeChanged(int, int)), this, SLOT(hRange(int, int)));
+    connect(ui->scrollArea->verticalScrollBar(), SIGNAL(rangeChanged(int,int)), this, SLOT(vRange(int,int)));
+    connect(ui->scrollArea->horizontalScrollBar(), SIGNAL(rangeChanged(int,int)), this, SLOT(hRange(int,int)));
     connect(ui->scrollArea->verticalScrollBar(), SIGNAL(valueChanged(int)), this, SLOT(vChange(int)));
     connect(ui->scrollArea->horizontalScrollBar(), SIGNAL(valueChanged(int)), this, SLOT(hChange(int)));
     connect(this, SIGNAL(sizeChanged()), this, SLOT(formRepos()));
@@ -236,7 +237,7 @@ Viewer::~Viewer()
   delete ui;
 }
 
-void Viewer::showPdfFile(QString filename) {
+void Viewer::showPdfFile(const QString& filename) {
   clearViewer();
   PdfDocument *document = nullptr;
 #ifdef USE_POPPLER
@@ -259,7 +260,7 @@ void Viewer::showPdfFile(QString filename) {
 #endif
 
   // Paranoid safety check
-  if (document == 0) {
+  if (document == nullptr) {
     // ... error message ...
     return;
   }
@@ -321,7 +322,7 @@ void Viewer::showDocument() {
     page.docPage = data->document->page(i);
     page.size = page.docPage->pageSizeF();
     if (i == 0) {
-      int dpi = 66.7 * ui->scrollArea->widget()->width() / page.size.width();
+      int dpi = int(66.7 * ui->scrollArea->widget()->width() / page.size.width());
       LOG(LM_INFO, "VV " << dpi << " " << ui->scrollArea->widget()->width() << " " << page.size.width());
       ui->horizontalSliderZoom->setValue(dpi);
     }
@@ -342,8 +343,6 @@ void Viewer::showDocument() {
     }
 #endif
   }
-  ui->spinBoxPage->setMinimum(1);
-  ui->spinBoxPage->setMaximum(np +1);
 
 //  data->grid->invalidate();
   LOG(LM_INFO, "START RENDER");
@@ -351,7 +350,7 @@ void Viewer::showDocument() {
 //    p.render(data->document, data->aktDpi);
 //    LOG(LM_INFO, "PG " << p.pgNum << " " << p.label->isVisibleTo(ui->scrollArea));
 //  }
-  ui->spinBoxPage->setValue(1);
+  ui->lineEditPage->setText("1");
   ui->pushButtonEdit->setEnabled(not data->formFields.empty());
 
 
@@ -389,7 +388,7 @@ void Viewer::editForm() {
   ui->pushButtonEdit->setVisible(false);
   ui->pushButtonEditCancel->setEnabled(true);
   ui->pushButtonThumb1->setEnabled(false);
-  std::map<int, QButtonGroup *> buttonGrpups;
+  std::map<int, QButtonGroup *> buttonGroups;
 #ifdef USE_POPPLER
   for (auto &ff:data->formFields) {
 //    QRect rect = ff.label->getRect(ff.formField->rect());
@@ -417,12 +416,12 @@ void Viewer::editForm() {
         e->setChecked(but->state());
         ff.widget = e;
       } else if (but->buttonType() == Poppler::FormFieldButton::Radio) {
-        auto it = buttonGrpups.find(ff.formField->id());
-        if (it == buttonGrpups.end()) {
-          it = buttonGrpups.emplace(ff.formField->id(), new QButtonGroup(ff.label)).first;
+        auto it = buttonGroups.find(ff.formField->id());
+        if (it == buttonGroups.end()) {
+          it = buttonGroups.emplace(ff.formField->id(), new QButtonGroup(ff.label)).first;
           auto lst = but->siblings();
           for (auto i:lst)  // bei siblings buttongroup eintragen (falls noch nicht vorhanden)
-            buttonGrpups.emplace(i, it->second);
+            buttonGroups.emplace(i, it->second);
         }
         auto e = new QRadioButton("", ff.label);
         it->second->addButton(e);
@@ -500,8 +499,8 @@ void Viewer::saveEditForm() {
   for (auto &ff:data->formFields) {
     if (auto but = dynamic_cast<Poppler::FormFieldButton *>(ff.formField)) {
       LOG(LM_INFO, "Button ");
-      if (auto e = dynamic_cast<QCheckBox *>(ff.widget))
-        but->setState(e->isChecked());
+      if (auto i = dynamic_cast<QCheckBox *>(ff.widget))
+        but->setState(i->isChecked());
       else if (auto e = dynamic_cast<QRadioButton *>(ff.widget)) {
         auto bg = e->group();
         if (bg)
@@ -570,7 +569,7 @@ void Viewer::vChange(int) {
   if (w) {
     for (auto &p:data->pages) {
       if (p.label == w) {
-        ui->spinBoxPage->setValue(p.pgNum +1);
+        ui->lineEditPage->setText(QString::number(p.pgNum +1));
         break;
       }
     }
@@ -584,6 +583,8 @@ void Viewer::hChange(int) {
 
 void Viewer::setPage(int p) {
   LOG(LM_INFO, "setPage " << p);
+  ui->pushButtonThumb1->setChecked(false);
+  ui->stackedWidget->setCurrentIndex(0);
   ui->scrollArea->setFocus();
   if (p > 0 and p <= data->pages.size()) {
     auto &page = data->pages[p -1];
@@ -595,6 +596,14 @@ void Viewer::formRepos() {
   LOG(LM_INFO, "REPOS");
   for (auto &ff:data->formFields)
     ff.rePos(data->aktDpi);
+}
+
+
+LabelThumb::LabelThumb(QWidget *parent, int pg) : QLabel(parent), page(pg) {}
+
+void LabelThumb::mousePressEvent(QMouseEvent *ev) {
+    LOG(LM_INFO, "MOUSE " << page);
+    emit selectPage(page + 1);
 }
 
 void Viewer::thumbnails(bool on) {
@@ -614,7 +623,8 @@ void Viewer::thumbnails(bool on) {
       int maxX = 0;
       int maxY = 0;
       for (auto &p:data->pages) {
-        p.labelThumb = new QLabel(data->thumbs);
+        p.labelThumb = new LabelThumb(data->thumbs, p.pgNum);
+        connect(p.labelThumb, SIGNAL(selectPage(int)), this, SLOT(setPage(int)));
         p.labelThumb->setPalette(pal);
         p.labelThumb->setAutoFillBackground(true);
 //        data->gridThumb->addWidget(p.labelThumb, p.pgNum / cols, p.pgNum % cols);
@@ -683,20 +693,20 @@ void Viewer::thumbReorg() {
   if (data->thumbs) {
     int maxX = data->thumbSize.width() + 6;
     int maxY = data->thumbSize.height() + 6;
-    int xMarging = 6;
-    int yMArgin = 6;
+    int xMargin = 6;
+    int yMargin = 6;
 
     int w = ui->scrollAreaThumb->viewport()->width();
-    int cols = (w - xMarging) / maxX;
+    int cols = (w - xMargin) / maxX;
     if (cols < 1)
       cols = 1;
 
     if (cols != data->thumbCols) {
       data->thumbCols = cols;
-      data->thumbs->setMinimumSize(cols * maxX + xMarging, (data->pages.size() + cols - 1) / cols * maxY + yMArgin);
+      data->thumbs->setMinimumSize(cols * maxX + xMargin, (int(data->pages.size()) + cols - 1) / cols * maxY + yMargin);
 
       for (auto &p:data->pages) {
-        p.labelThumb->move(xMarging + p.pgNum % cols * maxX, yMArgin + p.pgNum / cols * maxY);
+        p.labelThumb->move(xMargin + p.pgNum % cols * maxX, yMargin + p.pgNum / cols * maxY);
         p.labelThumb->show();
       }
     }
@@ -706,7 +716,7 @@ void Viewer::thumbReorg() {
 void Viewer::showPicture(const QPixmap &pixmap) {
   clearViewer();
   data->pixmap = pixmap;
-  QLabel *widget = new QLabel(this);
+  auto widget = new QLabel(this);
   widget->setScaledContents(false);
   ui->scrollArea->setWidget(widget);
   int a = ui->scrollArea->viewport()->width()  * 100 / pixmap.width();
@@ -757,12 +767,18 @@ void Viewer::print() {
     return;
 
   QPrinter printer(QPrinter::HighResolution);
+  int toPg = 1;
   if (data->document)
-    printer.setFromTo(1, data->pages.size());
+    toPg = int(data->pages.size());
+  printer.setFromTo(1, toPg);
   QPrintDialog dialog(&printer, this);
   dialog.setWindowTitle(tr("Print Document"));
-//  if (editor->textCursor().hasSelection())
-//    dialog.addEnabledOption(QAbstractPrintDialog::PrintSelection);
+  if (data->document and toPg > 1)
+    dialog.setOptions(QAbstractPrintDialog::PrintDialogOptions(QAbstractPrintDialog::PrintCurrentPage +
+                                                               QAbstractPrintDialog::PrintToFile + QAbstractPrintDialog::PrintSelection +
+                                                               QAbstractPrintDialog::PrintPageRange + QAbstractPrintDialog::PrintShowPageSize));
+  else
+    dialog.setOptions(QAbstractPrintDialog::PrintDialogOptions(QAbstractPrintDialog::PrintToFile + QAbstractPrintDialog::PrintShowPageSize));
   if (dialog.exec() != QDialog::Accepted) {
     return;
   }
@@ -771,6 +787,12 @@ void Viewer::print() {
   painter.begin(&printer);
 
   if (data->document) {
+    double scale = 3.0; // 1 = höchste Auflösung, aber langsam
+    if (printer.resolution() <= 400)
+      scale = 1;
+    else if (printer.resolution() <= 800)
+      scale = 2;
+    painter.scale(scale, scale);
 //  QPalette pal = palette();
 //  pal.setColor(QPalette::Background, Qt::white);
     double dpi = 144.0;
@@ -781,6 +803,8 @@ void Viewer::print() {
     s = 1;
     a = printer.fromPage();
     b = printer.toPage();
+    if (printer.printRange() == QPrinter::CurrentPage)
+      a = b = ui->lineEditPage->text().toInt();
     if (a < 1) {
       a = 1;
       b = data->pages.size();
@@ -788,22 +812,31 @@ void Viewer::print() {
     if (b > data->pages.size()) b = data->pages.size();
     if (b < a) b = a;
     if (printer.pageOrder() != QPrinter::FirstPageFirst) {
+      LOG(LM_INFO, "REVERSE");
       s = -s;
       qSwap(a, b);
     }
     LOG(LM_INFO, "PPPP " << a << " .. " << b);
+    QProgressDialog progressDialog(tr("printing ..."), tr("cancel"), a, b, this);
+    progressDialog.setMinimumDuration(300);
     for (size_t i = a - 1; i != b; i += s) {
       LOG(LM_INFO, "PRINT " << i);
+      if (i != a)
+      {
+        progressDialog.setValue(i);
+        QApplication::processEvents();
+      }
       auto &p = data->pages[i];
       if (not first)
         printer.newPage();
       first = false;
 
       //        QRectF imSz(dpi * p.size.width() / 72.0, dpi * p.size.height() / 72.0);
-      double dpix = 72.0 * printer.pageRect().width() / p.size.width();
-      double dpiy = 72.0 * printer.pageRect().height() / p.size.height();
-      LOG(LM_INFO, "DPI " << dpix << " x " << dpiy);
-      dpi = qMin(dpix, dpiy) * 0.96;
+      auto r = printer.pageLayout().paintRectPixels(printer.resolution());
+      double dpix = 72.0 * r.width() / p.size.width();
+      double dpiy = 72.0 * r.height() / p.size.height();
+      LOG(LM_INFO, "DPI " << dpix << " x " << dpiy << " R " << printer.resolution());
+      dpi = qMin(dpix, dpiy) * 0.96 / scale;
 #ifdef USE_POPPLER
       Poppler::Page *pdfPage = p.docPage;
       if (not pdfPage)
@@ -835,22 +868,29 @@ void Viewer::print() {
 //      LOG(LM_INFO, "PDF " << dpi * p.size.width() / 72.0);
       //painter.scale(scale, scale);
 
-      painter.drawImage(printer.paperRect().x(), printer.paperRect().y(), image);
+      auto pl = printer.pageLayout().fullRectPixels(printer.resolution());
+      painter.drawImage(pl.x(), pl.y(), image);
 
 #ifdef USE_POPPLER
 // after the usage, the page must be deleted
 //          delete pdfPage;
 #endif
+      if (progressDialog.wasCanceled()) {
+        printer.abort();
+        return;
+      }
     }
   } else { // pixmap
-    double xscale = printer.pageRect().width() / double(data->pixmap.width());
-    double yscale = printer.pageRect().height() / double(data->pixmap.height());
+    auto r = printer.pageLayout().paintRectPixels(printer.resolution());
+    double xscale = r.width() / double(data->pixmap.width());
+    double yscale = r.height() / double(data->pixmap.height());
     double scale = qMin(xscale, yscale);
-    LOG(LM_INFO, "Scale " << scale << " " << xscale << " " << yscale << " x " << printer.pageRect().width() << " "
+    LOG(LM_INFO, "Scale " << scale << " " << xscale << " " << yscale << " x " << r.width() << " "
                           << data->pixmap.width() << " y "
-                          << printer.pageRect().height() << " " << data->pixmap.height());
+                          << r.height() << " " << data->pixmap.height());
     painter.scale(scale, scale);
-    painter.drawPixmap(printer.paperRect().x(), printer.paperRect().y(), data->pixmap);
+    auto pl = printer.pageLayout().fullRectPixels(printer.resolution());
+    painter.drawPixmap(pl.x(), pl.y(), data->pixmap);
   }
   painter.end();
 

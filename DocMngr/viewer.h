@@ -21,6 +21,7 @@
 #define VIEWER_H
 
 #include <QWidget>
+#include <QLabel>
 
 namespace Ui {
 class Viewer;
@@ -53,7 +54,7 @@ public:
     explicit Viewer(QWidget *parent = nullptr);
     ~Viewer();
 
-  void showPdfFile(QString file);
+  void showPdfFile(const QString& file);
   void showPdfBuffer(const QByteArray &data);
   void showPicture(const QPixmap &pixmap);
   void clearViewer();
@@ -65,6 +66,17 @@ private:
     Ui::Viewer *ui;
     ViewerData *data;
 
+};
+
+class LabelThumb : public QLabel {
+Q_OBJECT
+public:
+  LabelThumb(QWidget *parent, int pg);
+signals:
+  void selectPage(int);
+protected:
+  int page;
+  void mousePressEvent(QMouseEvent *ev) override;
 };
 
 #endif // VIEWER_H
