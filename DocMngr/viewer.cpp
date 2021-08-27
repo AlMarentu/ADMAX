@@ -39,7 +39,9 @@
 #include <QGridLayout>
 #include <QPrinter>
 #include <QPrintDialog>
+#include <QFileDialog>
 #include <QProgressDialog>
+#include <QMessageBox>
 #include <string>
 #include "mobs/logging.h"
 
@@ -759,6 +761,30 @@ void Viewer::clearViewer() {
 #endif
   data->document = nullptr;
 
+}
+
+
+void Viewer::saveFile() {
+
+  if (data->document) {
+    if (auto conv = data->document->pdfConverter()) {
+      QString fileName = QFileDialog::getSaveFileName(this, tr("Save Document"), QDir::homePath(), tr("PDF (*.pdf)"));
+      if (not fileName.isEmpty()) {
+        conv->setOutputFileName(fileName);
+        conv->setPDFOptions(Poppler::PDFConverter::WithChanges);
+        if (not conv->convert())
+          QMessageBox::information(this, tr("ADMAX"), tr("Export failed"));
+      }
+    }
+  } else if (not data->pixmap.isNull()) {
+    QString fileName = QFileDialog::getSaveFileName(this, tr("Save Image"), QDir::homePath(), tr("Image (*.jpg *.png *.xpm *.tif)"));
+    if (not fileName.isEmpty()) {
+      if (not fileName.contains('.'))
+        fileName += ".jpg";
+      if (not data->pixmap.save(fileName))
+        QMessageBox::information(this, tr("ADMAX"), tr("Export failed"));
+    }
+  }
 }
 
 

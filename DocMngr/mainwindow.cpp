@@ -636,6 +636,10 @@ void MainWindow::save() {
 
 }
 
+void MainWindow::saveFile() {
+  ui->widget->saveFile();
+}
+
 void MainWindow::loadFile() {
   QString filter;
   QString file = QFileDialog::getOpenFileName(this, tr("Open File"), "", tr("PDF (*.pdf);;Images (*.png *.xpm *.jpg *.tif)"), &filter);

@@ -51,6 +51,7 @@ public slots:
   void save();
   void print();
   void loadFile();
+  void saveFile();
   void getDocument();
   void searchDocument();
   void searchRowClicked(int row, int col);

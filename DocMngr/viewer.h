@@ -59,6 +59,7 @@ public:
   void showPicture(const QPixmap &pixmap);
   void clearViewer();
   void print();
+  void saveFile();
 private:
   void showDocument();
   void resizeEvent(QResizeEvent *event) override;

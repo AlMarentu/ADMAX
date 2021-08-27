@@ -171,6 +171,7 @@
     <addaction name="actionExit"/>
     <addaction name="actionServer"/>
     <addaction name="actionprint"/>
+    <addaction name="actionSave"/>
    </widget>
    <widget class="QMenu" name="menuBearbeiten">
     <property name="title">
@@ -205,10 +206,15 @@
   </action>
   <action name="actionprint">
    <property name="text">
-    <string>print</string>
+    <string>Print</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+P</string>
+   </property>
+  </action>
+  <action name="actionSave">
+   <property name="text">
+    <string>Save</string>
    </property>
   </action>
  </widget>
@@ -334,8 +340,24 @@
    <slot>print()</slot>
    <hints>
     <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
      <x>626</x>
      <y>417</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>actionSave</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>saveFile()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>411</x>
+     <y>403</y>
     </hint>
     <hint type="destinationlabel">
      <x>626</x>
@@ -354,5 +376,6 @@
   <slot>searchRowClicked(QTreeWidgetItem*,int)</slot>
   <slot>server()</slot>
   <slot>print()</slot>
+  <slot>saveFile()</slot>
  </slots>
 </ui>
