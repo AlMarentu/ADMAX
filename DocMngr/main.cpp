@@ -24,6 +24,20 @@
 
 int main(int argc, char *argv[]) {
   QApplication a(argc, argv);
+  QTranslator translatorBase;
+  if ( translatorBase.load(QLocale(), QStringLiteral("qtbase"), QLatin1String("_"), QLibraryInfo::location(QLibraryInfo::TranslationsPath)))
+    a.installTranslator(&translatorBase);
+  else
+    LOG(LM_ERROR, "no base translator for " << QLocale::languageToString(QLocale().language()).toStdString());
+  QTranslator translator;
+  if (translator.load(QLocale(), QLatin1String("l10n"), QLatin1String("_"), QLatin1String(":/translators")))
+    a.installTranslator(&translator);
+  else
+    LOG(LM_ERROR, "no translator for " << QLocale::languageToString(QLocale().language()).toStdString());
+
+  LOG(LM_INFO, "LIN QM " << QLibraryInfo::location(QLibraryInfo::TranslationsPath).toStdString());
+//  QTranslator qtTranslator;
+//  a.installTranslator(&qtTranslator);
   MainWindow main;
   main.show();
 //  QPushButton button("Hello world!", nullptr);

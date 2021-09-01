@@ -4,15 +4,26 @@ set (CMAKE_CXX_STANDARD 11)
 if (CMAKE_HOST_WIN32)
     set (CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} C:/poppler-21.04.0 )
 endif()
-
+#set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set (CMAKE_AUTOMOC ON)
 set (CMAKE_AUTORCC ON)
 set (CMAKE_AUTOUIC ON)
 
 set (QT_VERSION 5)
 set (REQUIRED_LIBS Core Gui Widgets Network PrintSupport) # Pdf
-set (REQUIRED_LIBS_QUALIFIED Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network Qt5::PrintSupport ) # Qt5::Pdf
+set (REQUIRED_LIBS_QUALIFIED Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network Qt5::PrintSupport) # Qt5::Pdf
 
+FIND_PACKAGE( Qt5LinguistTools )
+foreach(X  de en)
+    set(TS_FILES ${TS_FILES} DocMngr_${X}.ts)
+    set(qrcFile "${qrcFile}\n  <file alias=\"l10n_${X}.qm\">${CMAKE_CURRENT_BINARY_DIR}/DocMngr_${X}.qm</file>")
+endforeach()
+#set(TS_FILES DocMngr_en.ts DocMngr_de.ts)
+#set_source_files_properties(${TS_FILES} PROPERTIES OUTPUT_LOCATION "l10n")
+qt5_create_translation(qmFilesT ${CMAKE_SOURCE_DIR}/DocMngr ${TS_FILES})
+qt5_add_translation(qmFiles ${TS_FILES})
+file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/l10n.qrc
+        CONTENT  "<!DOCTYPE RCC><RCC version=\"1.0\">\n<qresource prefix=\"/translators\">${qrcFile}\n</qresource>\n</RCC>\n" )
 
 include_directories(${CMAKE_SOURCE_DIR}/Server)
 include_directories(${CMAKE_SOURCE_DIR}/DocMngr)
@@ -35,7 +46,8 @@ if (WIN32)
 endif()
 message(STATUS "Poppler=${POPPLER_INCLUDE} - ${POPPLER_LIB}")
 
-add_executable (DocMngr main.cpp mainwindow.cpp mainwindow.h mrpccli.cpp mrpccli.h viewer.cpp viewer.h)
+add_executable (DocMngr main.cpp mainwindow.cpp mainwindow.h mrpccli.cpp mrpccli.h viewer.cpp viewer.h ${qmFiles} ${CMAKE_CURRENT_BINARY_DIR}/l10n.qrc)
+
 
 find_package (Qt${QT_VERSION} COMPONENTS ${REQUIRED_LIBS} REQUIRED)
 
