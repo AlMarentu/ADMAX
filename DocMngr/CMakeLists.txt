@@ -6,7 +6,7 @@ if (CMAKE_HOST_WIN32)
 endif()
 #set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set (CMAKE_AUTOMOC ON)
-set (CMAKE_AUTORCC ON)
+set (CMAKE_AUTORCC OFF)
 set (CMAKE_AUTOUIC ON)
 
 set (QT_VERSION 5)
@@ -14,6 +14,7 @@ set (REQUIRED_LIBS Core Gui Widgets Network PrintSupport) # Pdf
 set (REQUIRED_LIBS_QUALIFIED Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network Qt5::PrintSupport) # Qt5::Pdf
 
 FIND_PACKAGE( Qt5LinguistTools )
+FIND_PACKAGE( Qt5Core )
 foreach(X  de en)
     set(TS_FILES ${TS_FILES} DocMngr_${X}.ts)
     set(qrcFile "${qrcFile}\n  <file alias=\"l10n_${X}.qm\">${CMAKE_CURRENT_BINARY_DIR}/DocMngr_${X}.qm</file>")
@@ -24,6 +25,7 @@ qt5_create_translation(qmFilesT ${CMAKE_SOURCE_DIR}/DocMngr ${TS_FILES})
 qt5_add_translation(qmFiles ${TS_FILES})
 file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/l10n.qrc
         CONTENT  "<!DOCTYPE RCC><RCC version=\"1.0\">\n<qresource prefix=\"/translators\">${qrcFile}\n</qresource>\n</RCC>\n" )
+qt5_add_resources(rccFiles ${CMAKE_CURRENT_BINARY_DIR}/l10n.qrc)
 
 include_directories(${CMAKE_SOURCE_DIR}/Server)
 include_directories(${CMAKE_SOURCE_DIR}/DocMngr)
@@ -45,8 +47,10 @@ if (WIN32)
 # jpeg freetype png tiff zlib
 endif()
 message(STATUS "Poppler=${POPPLER_INCLUDE} - ${POPPLER_LIB}")
+message(STATUS "qmFiles=${qmFiles}")
+message(STATUS "rccFiles=${rccFiles}")
 
-add_executable (DocMngr main.cpp mainwindow.cpp mainwindow.h mrpccli.cpp mrpccli.h viewer.cpp viewer.h ${qmFiles} ${CMAKE_CURRENT_BINARY_DIR}/l10n.qrc)
+add_executable (DocMngr main.cpp mainwindow.cpp mainwindow.h mrpccli.cpp mrpccli.h viewer.cpp viewer.h  ${rccFiles})
 
 
 find_package (Qt${QT_VERSION} COMPONENTS ${REQUIRED_LIBS} REQUIRED)
