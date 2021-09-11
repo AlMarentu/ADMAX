@@ -70,6 +70,7 @@ ObjRegister(SessionError);
 ObjRegister(CommandResult);
 ObjRegister(SessionLogin);
 ObjRegister(SessionResult);
+ObjRegister(PublicKey);
 
 ObjRegister(Document);
 ObjRegister(DocumentRaw);
@@ -87,7 +88,7 @@ MainWindow::MainWindow(QWidget *parent) :
   LOG(LM_INFO, "start");
 
   QSettings obj("AlMarentu", "ADMAX");
-  MrpcClient::server = obj.value("main/host", "localhost:4444").toString();
+  MrpcClient::setHost(obj.value("main/host", "localhost:4444").toString());
 
 
   ui->pushButtonSave->setEnabled(false);
@@ -953,11 +954,12 @@ void MainWindow::server() {
   bool ok;
   QString host = QInputDialog::getText(this, tr("Server Settings"),
                                tr("host:port"), QLineEdit::Normal,
-                               MrpcClient::server, &ok);
+                               MrpcClient::host(), &ok);
   if (ok and not host.isEmpty()) {
     obj.setValue("main/host", host);
     LOG(LM_INFO, "Set host to " << host.toStdString());
-    MrpcClient::server = host;
+    MrpcClient::setHost(host);
+    ui->tabWidgetTags->clear();
     getConfiguration();
   }
 }

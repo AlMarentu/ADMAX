@@ -40,13 +40,15 @@ public:
   void close();
   void waitReady(int percent);
   void waitDone();
+  /// set host::port
+  static void setHost(QString host);
+  static QString host() { return server; };
   mobs::ObjectBase *sendAndWaitObj(const mobs::ObjectBase *obj, int percent);
   mobs::ObjectBase *execNextObj(int percent);
 
   u_char *getAttachment(int64_t sz, int percent);
 
   QElapsedTimer elapsed;
-  static QString server; // host:port
 
 
 public slots:
@@ -65,12 +67,11 @@ private:
   QProgressDialog *progress = nullptr;
   QEventLoop *eventLoop = nullptr;
   MrpcClientData *data = nullptr;
-
+  static QString server; // host:port
 
   void sendLogin();
+  void sendGetPub();
   void flush();
-
-
   void error();
 };
 

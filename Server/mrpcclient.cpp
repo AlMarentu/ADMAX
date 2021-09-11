@@ -44,6 +44,7 @@ using namespace std;
 //Objektdefinitionen
 
 ObjRegister(Ping);
+ObjRegister(PublicKey);
 
 ObjRegister(SessionError);
 ObjRegister(CommandResult);
@@ -123,6 +124,9 @@ public:
       stop();
     } else if (auto *sess = dynamic_cast<Ping *>(obj)) {
       LOG(LM_ERROR, "PING " << sess->to_string());
+    } else if (auto *pk = dynamic_cast<PublicKey *>(obj)) {
+      LOG(LM_INFO, "PUBKEY " << pk->to_string());
+      dumpStr << pk->key();
     } else if (auto *sess = dynamic_cast<Document *>(obj)) {
       LOG(LM_ERROR, "DOCUMENT " << sess->to_string());
       if (dumpStr.is_open()) {
@@ -491,6 +495,26 @@ void client(const string &mode, const string& server, int port, const string &ke
 
 
 //    x2out << mobs::CryptBufBase::base64(true);
+    if (mode == "serverkey") {
+      xr.dumpStr.open(serverkey + ".ori", ios::trunc | ios::out);
+      if (not xr.dumpStr.is_open())
+        THROW("cann't write server key");
+      mobs::ConvObjToString cth;
+      mobs::XmlOut xo(&xf, cth);
+      GetPub gp;
+      gp.id(1);
+      gp.traverse(xo);
+      xf.writeTagEnd();
+      streambufO.finalize();
+      xf.sync();
+      while (not xr.eof()) {
+        LOG(LM_INFO, "PARSE");
+        xr.parse();
+        LOG(LM_INFO, "STOPPED  " <<xr.level());
+      }
+      xr.dumpStr.close();
+      return;
+    }
 
     if (sessionId == 0) {
       SessionLoginData data;
@@ -659,6 +683,7 @@ void usage() {
        << "  dump ... dump database\n"
        << "  restore ... restore database\n"
        << "  import ... import from file\n"
+       << "  serverkey ... aquire public key from server\n"
        << "  ping ... ping server\n";
   exit(1);
 }

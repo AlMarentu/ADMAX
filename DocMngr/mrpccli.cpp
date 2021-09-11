@@ -201,7 +201,15 @@ public:
       mobs::decryptPrivateRsa(sess->key(), sessionKey, "keystore/client_priv.pem", "12345");
       // parsen abbrechen
       stop();
-    } else {
+    } else if (auto pk = dynamic_cast<PublicKey *>(obj)) {
+      LOG(LM_INFO, "PUBKEY " << pk->to_string());
+      if (serverPubKey.empty())
+        serverPubKey = pk->key();
+      else
+        LOG(LM_ERROR, "pub key already assigned");
+      // parsen abbrechen
+      stop();
+  } else {
       objReturn = obj;
       stop();
       return;
@@ -218,16 +226,18 @@ public:
 
   std::string errorMsg;
 
+  static std::string serverPubKey;
   static uint sessionId;
   static std::vector<u_char> sessionKey;
 
 };
+std::string XmlInput::serverPubKey;
 uint XmlInput::sessionId = 0;
 std::vector<u_char> XmlInput::sessionKey;
 
 class MrpcClientData {
 public:
-  enum ConState {Connecting, Authenticating, Online, SessionClosed, Error };
+  enum ConState {Connecting, GetServerKey, Authenticating, Online, SessionClosed, Error };
   MrpcClientData() : streambufO(ostr), x2out(&streambufO), xf(x2out, mobs::XmlWriter::CS_utf8, true),
   iBstr(&iBlkStr), streambufI(iBstr), x2in(&streambufI), xr(x2in) {
     xr.readTillEof(false);
@@ -344,6 +354,18 @@ void MrpcClient::flush() {
   data->ostr.clear();
 }
 
+void MrpcClient::sendGetPub() {
+  data->state = MrpcClientData::GetServerKey;
+  GetPub gp;
+  gp.id(1);
+  mobs::ConvObjToString cth;
+  mobs::XmlOut xo(&data->xf, cth);
+  gp.traverse(xo);
+  data->xf.sync();
+  LOG(LM_INFO, "getPub gesendet");
+  flush();
+}
+
 void MrpcClient::sendLogin() {
   data->state = MrpcClientData::Authenticating;
   SessionLoginData sess;
@@ -354,7 +376,9 @@ void MrpcClient::sendLogin() {
   std::vector<u_char> inhalt;
   copy(buffer.begin(), buffer.end(), back_inserter(inhalt));
   std::vector<u_char> cipher;
-  mobs::encryptPublicRsa(inhalt, cipher, "keystore/server.pem");
+  if (XmlInput::serverPubKey.empty())
+    THROW("server key missing");
+  mobs::encryptPublicRsa(inhalt, cipher, XmlInput::serverPubKey);
   SessionLogin login;
   login.cipher(cipher);
 
@@ -382,7 +406,9 @@ void MrpcClient::connected() {
   data->xf.writeHead();
   data->xf.writeTagBegin(L"methodCall");
 
-  if (XmlInput::sessionId == 0) {
+  if (XmlInput::serverPubKey.empty()) {
+    sendGetPub();
+  } else if (XmlInput::sessionId == 0) {
     sendLogin();
   }
   else {
@@ -533,6 +559,11 @@ void MrpcClient::readyRead() {
     if (not eob and data->xr.encryptedInput)  // wenn kein Blockende, dann sicherheitshalber nach jedem Token stoppen
       data->xr.stop();
     data->xr.parse();
+    if (data->state == MrpcClientData::GetServerKey) {
+      LOG(LM_INFO, "got server key send login");
+      sendLogin();
+      return;
+    }
     if (data->xr.skipDelim) {
       data->xr.skipDelim = false;
       data->iBlkStr.startNewBlock();
@@ -777,6 +808,11 @@ u_char *MrpcClient::getAttachment(int64_t sz, int percent) {
     progress->setValue(data->percentEnd);
   LOG(LM_INFO, "WAIT ATTACHMENT end " << sz << " buf " << mobs::CryptBufAes::iv_size() + (sz + 16) / 16 * 16);
   return &data->attachment[0];
+}
+
+void MrpcClient::setHost(QString host) {
+  server = host;
+  XmlInput::serverPubKey.clear();
 }
 
 

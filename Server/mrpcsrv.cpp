@@ -278,7 +278,23 @@ public:
         // weiteres parsen abbrechen
         stop();
       }
-    } else if (not ctx) {
+    } else if (auto *gp = dynamic_cast<GetPub *>(obj)) {
+      PublicKey pkey;
+      pkey.id(gp->id());
+      ifstream ks(STRSTR(server->keystorePath << '/' << server->name << ".pem"));
+      if (ks) {
+        stringstream ss;
+        ss << ks.rdbuf();
+        ks.close();
+        pkey.key(ss.str());
+      }
+      pkey.traverse(xo);
+//      if (needDelimiter)
+//        xmlResult.putc(0);
+      xmlResult.sync();
+      // weiteres parsen abbrechen
+      stop();
+   } else if (not ctx) {
       THROW("invalid sessionId");
     }
     else if (ctx->login.empty()) {
@@ -455,6 +471,7 @@ ObjRegister(SearchDocument);
 ObjRegister(Dump);
 ObjRegister(GetDocument);
 ObjRegister(GetConfig);
+ObjRegister(GetPub);
 
 
 void ExecVisitor::visit(mobs::ObjectBase &obj) {
@@ -888,6 +905,14 @@ void ExecVisitor::visit(Ping &obj) {
     THROW("missing session context");
   LOG(LM_INFO, "Send duplicate");
   obj.cnt(obj.cnt()+1);
+  obj.traverse(m_xmlOut);
+}
+
+void ExecVisitor::visit(GetPub &obj) {
+  if (not m_xi.ctx)
+    THROW("missing session context");
+  LOG(LM_INFO, "Send public key");
+  //obj.cnt(obj.cnt()+1);
   obj.traverse(m_xmlOut);
 }
 

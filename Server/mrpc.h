@@ -34,6 +34,7 @@ class SearchDocument;
 class SaveDocument;
 class GetConfig;
 class Ping;
+class GetPub;
 class Dump;
 class ExecVisitor : virtual public mobs::ObjVisitor {
 public:
@@ -44,6 +45,7 @@ public:
   void visit(SaveDocument &obj);
   void visit(GetConfig &obj);
   void visit(Ping &obj);
+  void visit(GetPub &obj);
   void visit(Dump &obj);
   mobs::XmlOut &m_xmlOut;
   XmlInput &m_xi;
@@ -114,7 +116,28 @@ public:
   MemVar(std::string, info);
 };
 
+class PublicKey : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(PublicKey);
 
+  MemVar(u_int, id);
+  MemVar(std::string, key);
+};
+
+
+
+class GetPub : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(GetPub);
+
+  MemVar(int, id, KEYELEMENT1);
+  MemVar(int, cnt);
+#ifdef MRPC_SERVER
+  VISITOR(ExecVisitor);
+#endif
+};
 
 class Ping : virtual public mobs::ObjectBase
 {
