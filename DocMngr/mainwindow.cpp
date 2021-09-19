@@ -50,6 +50,7 @@
 
 #include "mrpccli.h"
 #include "viewer.h"
+#include "passwdDlg.h"
 
 //class MRpcClient {
 //public:
@@ -89,14 +90,17 @@ MainWindow::MainWindow(QWidget *parent) :
 
   QSettings obj("AlMarentu", "ADMAX");
   MrpcClient::setHost(obj.value("main/host", "localhost:4444").toString());
-
+  MrpcClient::publicKey = obj.value("main/pubkey").toString().toStdString();
+  MrpcClient::privateKey = obj.value("main/privkey").toString().toStdString();
 
   ui->pushButtonSave->setEnabled(false);
 
 //  ui->widget->showPdfFile(QString("../fritz.pdf"));
 //  ui->widget->showPdfFile("../Stunden.pdf");
 
-  QTimer::singleShot(1, this, SLOT(getConfiguration()));
+
+  QTimer::singleShot(1, this, SLOT(initKey()));
+
 
 //  initTags(1);
 }
@@ -643,7 +647,8 @@ void MainWindow::saveFile() {
 
 void MainWindow::loadFile() {
   QString filter;
-  QString file = QFileDialog::getOpenFileName(this, tr("Open File"), "", tr("PDF (*.pdf);;Images (*.png *.xpm *.jpg *.tif)"), &filter);
+  QString file = QFileDialog::getOpenFileName(this, tr("Open File"), QDir::homePath(),
+                                              tr("PDF (*.pdf);;Images (*.png *.xpm *.jpg *.tif)"), &filter);
   if (not file.isEmpty()) {
     LOG(LM_INFO, "FIL " << filter.toStdString());
     if (filter.startsWith("PDF")) {
@@ -671,9 +676,109 @@ void MainWindow::loadFile() {
 
 }
 
-void MainWindow::getConfiguration() {
-  try {
+void MainWindow::changePass() {
+  if (MrpcClient::privateKey.empty())
+    return;
+  QString passOld, passNew;
+  PasswdDlg pd(this, passOld, passNew);
+  if (pd.exec() != 1) {
+    QApplication::quit();
+    return;
+  }
+  std::string oPw = passOld.toUtf8().data();
+  if (not mobs::checkPasswordRsa(MrpcClient::privateKey, oPw)) {
+    QMessageBox::information(this, windowTitle(), tr("Old password is wrong"));
+    return;
+  }
 
+  try {
+    std::string nPw = passNew.toUtf8().data();
+    mobs::exportKey(MrpcClient::privateKey, oPw, MrpcClient::privateKey, MrpcClient::publicKey, nPw);
+    MrpcClient::passwd = nPw;
+    QSettings obj("AlMarentu", "ADMAX");
+    obj.setValue("main/pubkey", QString(MrpcClient::publicKey.c_str()));
+    obj.setValue("main/privkey", QString(MrpcClient::privateKey.c_str()));
+ } catch (std::exception &e) {
+    LOG(LM_ERROR, "change passwd: " << e.what());
+    QMessageBox::information(this, windowTitle(), tr("error changing password"));
+  }
+}
+
+void MainWindow::initKey() {
+  if (MrpcClient::privateKey.empty()) {
+    QString pass;
+    PasswdDlg pd(this, pass);
+    if (pd.exec() != 1) {
+      QApplication::quit();
+      return;
+    }
+    MrpcClient::passwd = pass.toUtf8().data();
+    try {
+      mobs::generateRsaKeyMem(MrpcClient::privateKey, MrpcClient::publicKey, MrpcClient::passwd);
+    } catch (std::exception &e) {
+      LOG(LM_ERROR, "error generating key " << e.what());
+      QMessageBox::information(this, windowTitle(), tr("can't generate key - quit"));
+      QApplication::quit();
+      return;
+    }
+    //LOG(LM_INFO, "PPP " << MrpcClient::privateKey << "\n\n" <<  MrpcClient::passwd);
+    QString file = QFileDialog::getSaveFileName(this, tr("Save public key"), "", tr("PEM (*.pem)"));
+    if (not file.isEmpty()) {
+      std::ofstream pem(file.toUtf8().data(), std::ios::trunc);
+      if (pem.is_open()) {
+        pem << MrpcClient::publicKey;
+        pem.close();
+
+        QSettings obj("AlMarentu", "ADMAX");
+        obj.setValue("main/pubkey", QString(MrpcClient::publicKey.c_str()));
+        obj.setValue("main/privkey", QString(MrpcClient::privateKey.c_str()));
+        QTimer::singleShot(1, this, SLOT(getConfiguration()));
+        return;
+      }
+    }
+
+    QMessageBox::information(this, windowTitle(), tr("nothing changed"));
+    QApplication::quit();
+    return;
+  }
+  QTimer::singleShot(1, this, SLOT(getConfiguration()));
+}
+
+void MainWindow::getConfiguration() {
+  MrpcClient::fingerprint = mobs::getRsaFingerprint(MrpcClient::publicKey);
+  if (MrpcClient::passwd.empty()) {
+    for (;;) {
+      bool ok;
+      QString pwd = QInputDialog::getText(this, windowTitle(),
+                                          tr("Password:"), QLineEdit::Password,
+                                          "", &ok);
+      if (ok and not pwd.isEmpty())
+        MrpcClient::passwd = pwd.toUtf8().data();
+      else {
+        QMessageBox msgBox;
+        msgBox.setText(tr("a password is needed"));
+        msgBox.setInformativeText(tr("Do you want to create new key files?"));
+        msgBox.setStandardButtons(QMessageBox::Retry | QMessageBox::Close);
+        msgBox.setDefaultButton(QMessageBox::Retry);
+        msgBox.addButton(tr("create new"), QMessageBox::ActionRole);
+        switch (msgBox.exec()) {
+          case QMessageBox::Close:
+            QApplication::quit();
+            return;
+          case QMessageBox::Retry:
+            break;
+          default:
+            MrpcClient::privateKey = MrpcClient::publicKey = "";
+            QTimer::singleShot(1, this, SLOT(initKey()));
+            return;
+        }
+      }
+      LOG(LM_INFO, "PPP " << MrpcClient::privateKey << "\n\n" <<  MrpcClient::passwd);
+      if (mobs::checkPasswordRsa(MrpcClient::privateKey, MrpcClient::passwd))
+        break;
+    }
+  }
+  try {
     mrpc = new MrpcClient(this);
     mrpc->waitReady(5);
     LOG(LM_INFO, "MAIN connected");

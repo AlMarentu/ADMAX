@@ -50,7 +50,7 @@ message(STATUS "Poppler=${POPPLER_INCLUDE} - ${POPPLER_LIB}")
 message(STATUS "qmFiles=${qmFiles}")
 message(STATUS "rccFiles=${rccFiles}")
 
-add_executable (DocMngr main.cpp mainwindow.cpp mainwindow.h mrpccli.cpp mrpccli.h viewer.cpp viewer.h  ${rccFiles})
+add_executable (DocMngr main.cpp mainwindow.cpp mainwindow.h mrpccli.cpp mrpccli.h viewer.cpp viewer.h passwdDlg.cpp passwdDlg.h ${rccFiles})
 
 
 find_package (Qt${QT_VERSION} COMPONENTS ${REQUIRED_LIBS} REQUIRED)

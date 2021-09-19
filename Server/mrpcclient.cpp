@@ -468,13 +468,14 @@ void client(const string &mode, const string& server, int port, const string &ke
 
     string serverkey = keystore + "server.pem";
     string privkey = keystore + keyname + "_priv.pem";
+    string fingerprint = mobs::getRsaFingerprint(keystore + keyname + ".pem");
 
     string service = to_string(port);
     mobs::tcpstream con(server, service);
     if (not con.is_open())
       throw runtime_error("can't connect");
 
-    LOG(LM_INFO, "OK");
+    LOG(LM_INFO, "OK " << fingerprint);
     mobs::CryptOstrBuf streambufO(con);
     std::wostream x2out(&streambufO);
     cout << "TTT " << std::boolalpha << x2out.fail() << " " << x2out.tellp() << endl;
@@ -496,7 +497,7 @@ void client(const string &mode, const string& server, int port, const string &ke
 
 //    x2out << mobs::CryptBufBase::base64(true);
     if (mode == "serverkey") {
-      xr.dumpStr.open(serverkey + ".ori", ios::trunc | ios::out);
+      xr.dumpStr.open(serverkey, ios::trunc | ios::out);
       if (not xr.dumpStr.is_open())
         THROW("cann't write server key");
       mobs::ConvObjToString cth;
@@ -518,7 +519,7 @@ void client(const string &mode, const string& server, int port, const string &ke
 
     if (sessionId == 0) {
       SessionLoginData data;
-      data.login(keyname);
+      data.login(fingerprint);
       data.software("mrpcclient");
 
       string buffer = data.to_string(mobs::ConvObjToString().exportJson().noIndent());

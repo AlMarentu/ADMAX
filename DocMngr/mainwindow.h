@@ -56,6 +56,8 @@ public slots:
   void searchDocument();
   void searchRowClicked(int row, int col);
   void searchRowClicked(QTreeWidgetItem*,int);
+  void initKey();
+  void changePass();
   void getConfiguration();
 
 private:
@@ -65,6 +67,7 @@ private:
   std::map<int, ActionTemplate> actionTemplates;
 
   void initTags(const TemplateInfo &templateInfo);
+
 };
 
 #endif // MAINWINDOW_H

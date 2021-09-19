@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <set>
 #include <utility>
+#include <mobs/rsa.h>
 #include "mobs/dbifc.h"
 #include "mobs/logging.h"
 
@@ -115,6 +116,15 @@ public:
   MemVar(std::string, tok3); // BucketToken prio=3
 };
 
+class DMGR_KeyInfo : virtual public mobs::ObjectBase {
+public:
+  ObjInit(DMGR_KeyInfo);
+  MemVar(std::string, fingerprint, KEYELEMENT1);
+  MemVar(std::string, user);
+  MemVar(std::string, pubkey);
+  MemVar(int64_t, version, VERSIONFIELD);
+
+};
 
 
 class DMGR_Tag : virtual public mobs::ObjectBase {
@@ -134,27 +144,51 @@ public:
 
 };
 
+class DMGR_ServerKey : virtual public mobs::ObjectBase {
+public:
+  ObjInit(DMGR_ServerKey);
+  MemVar(bool, dummy, KEYELEMENT1);
+  MemVar(std::string, privkey);
+  MemVar(std::string, pubkey);
+
+};
 
 
 
-void Filestore::setBase(const std::string &basedir) {
+void Filestore::setBase(const std::string &basedir, bool genkey) {
   base = basedir;
   // Datenbank Verbindung einrichten
   newDbInstance("docsrv");
 
+  DMGR_ServerKey sk;
   DMGR_Counter c;
+  DMGR_KeyInfo k;
   DMGR_Document d;
   DMGR_Tag t;
   DMGR_TagInfo p;
   DMGR_TemplatePool tp;
   DMGR_BucketPool bp;
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc("docsrv");
+  dbi.structure(sk);
   dbi.structure(c);
+  dbi.structure(k);
   dbi.structure(d);
   dbi.structure(t);
   dbi.structure(p);
   dbi.structure(tp);
   dbi.structure(bp);
+
+  if (not genkey and dbi.load(sk)) {
+    pub = sk.pubkey();
+    priv = sk.privkey();
+//    LOG(LM_INFO, "PUB " << pub);
+  } else {
+    mobs::generateRsaKeyMem(priv, pub, "Nd7d/lk");
+//    LOG(LM_INFO, "PUB NEW " << pub);
+    sk.pubkey(pub);
+    sk.privkey(priv);
+    dbi.save(sk);
+  }
 }
 
 void Filestore::newDbInstance(const std::string &con) {
@@ -181,6 +215,8 @@ Filestore::Filestore(std::string con) : conName(std::move(con)) {
 }
 
 std::string Filestore::base;
+std::string Filestore::pub;
+std::string Filestore::priv;
 
 
 void Filestore::newDocument(DocInfo &doc, const std::list<TagInfo> &tags, int groupId) {
@@ -839,6 +875,31 @@ void Filestore::loadTemplatesFromFile(const std::string &filename) {
     }
   }
 
+}
+
+void Filestore::addUser(const std::string &fingerprint, const std::string &user, const std::string &pubKey) {
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
+  DMGR_KeyInfo k;
+  k.fingerprint(fingerprint);
+  if (dbi.load(k))
+    k.clearModified();
+  k.user(user);
+  k.pubkey(pubKey);
+  if (k.isModified())
+    dbi.save(k);
+  else
+    LOG(LM_INFO, "key info nothing changed");
+}
+
+bool Filestore::findUser(const std::string &fingerprint, std::string &user, std::string &pubKey) {
+  auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
+  DMGR_KeyInfo k;
+  k.fingerprint(fingerprint);
+  if (not dbi.load(k))
+    return false;
+  user = k.user();
+  pubKey = k.pubkey();
+  return true;
 }
 
 

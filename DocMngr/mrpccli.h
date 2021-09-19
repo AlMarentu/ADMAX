@@ -49,6 +49,10 @@ public:
   u_char *getAttachment(int64_t sz, int percent);
 
   QElapsedTimer elapsed;
+  static std::string privateKey;
+  static std::string publicKey;
+  static std::string fingerprint;
+  static std::string passwd;
 
 
 public slots:

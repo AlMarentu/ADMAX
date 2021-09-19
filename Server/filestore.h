@@ -161,11 +161,20 @@ public:
 
   void loadTemplatesFromFile(const std::string &filename);
 
-  static void setBase(const std::string &basedir);
+  static void setBase(const std::string &basedir, bool genKey = false);
+
+  void addUser(const std::string &fingerprint, const std::string &user, const std::string &pubKey);
+
+  bool findUser(const std::string &fingerprint, std::string &user, std::string &pubKey);
+
+  static const std::string &privateKey() { return  priv; };
+  static const std::string &publicKey() { return  pub; };
 
 private:
-  static std::string base;
   std::string conName;
+  static std::string base;
+  static std::string pub;
+  static std::string priv;
 
 };
 

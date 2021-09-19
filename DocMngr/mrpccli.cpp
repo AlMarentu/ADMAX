@@ -198,7 +198,7 @@ public:
       LOG(LM_INFO, "SESSIORESULT " << sess->to_string());
       sessionId = sess->id();
       // Session-Key mit privatem Schlüssel entschlüsseln
-      mobs::decryptPrivateRsa(sess->key(), sessionKey, "keystore/client_priv.pem", "12345");
+      mobs::decryptPrivateRsa(sess->key(), sessionKey, MrpcClient::privateKey, MrpcClient::passwd);
       // parsen abbrechen
       stop();
     } else if (auto pk = dynamic_cast<PublicKey *>(obj)) {
@@ -308,6 +308,10 @@ MrpcClient::MrpcClient(QWidget *parent) : QObject() {
 }
 
 QString MrpcClient::server;
+std::string MrpcClient::privateKey;
+std::string MrpcClient::publicKey;
+std::string MrpcClient::fingerprint;
+std::string MrpcClient::passwd;
 
 MrpcClient::~MrpcClient() {
   LOG(LM_INFO, "MrpcClient destruktor ");
@@ -369,7 +373,7 @@ void MrpcClient::sendGetPub() {
 void MrpcClient::sendLogin() {
   data->state = MrpcClientData::Authenticating;
   SessionLoginData sess;
-  sess.login("client");
+  sess.login(MrpcClient::fingerprint);
   sess.software("ADMAXclient");
 
   std::string buffer = sess.to_string(mobs::ConvObjToString().exportJson().noIndent());

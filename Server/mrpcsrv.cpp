@@ -56,23 +56,15 @@ class XmlInput;
 
 class MrpcException : public std::runtime_error {
 public:
-  MrpcException(const char *msg) : std::runtime_error(msg) {};
-  MrpcException(const std::string &msg) : std::runtime_error(msg) {};
+  explicit MrpcException(const char *msg) : std::runtime_error(msg) {};
+  explicit MrpcException(const std::string &msg) : std::runtime_error(msg) {};
 };
 
 class MRpcServer {
 public:
   std::string service = "4444";
-  std::string name = "server";
-  std::string keystorePath = "keystore";
-  std::string passphrase = "12345";
 
   void server();
-
-  void genKey() const {
-    mobs::generateRsaKey(STRSTR(keystorePath << '/' << name << "_priv.pem"),
-                         STRSTR(keystorePath << '/' << name << ".pem"), passphrase);
-  }
 
   SessionContext *getSession(u_int id);
   SessionContext *newSession(u_int &id, const std::string &login);
@@ -107,7 +99,8 @@ class SessionContext {
 public:
   SessionContext(u_int id, std::string  l, std::vector<u_char>  k) : sessionId(id), login(std::move(l)), key(std::move(k)) {}
   u_int sessionId;
-  string login;
+  string login; // fingerprint
+  string user;  // username
   vector<u_char> key;
 
   list<TemplateInfo> tInfo{}; // Liste für diese Session erlaubter Templates
@@ -238,19 +231,24 @@ public:
     if (auto *sess = dynamic_cast<SessionLogin *>(obj)) {
       LOG(LM_INFO, "LOGIN " << sess->cipher().size());
       std::vector<u_char> inhalt;
-      mobs::decryptPrivateRsa(sess->cipher(), inhalt, STRSTR(server->keystorePath << '/' << server->name << "_priv.pem"), server->passphrase);
+//      mobs::decryptPrivateRsa(sess->cipher(), inhalt, STRSTR(server->keystorePath << '/' << server->name << "_priv.pem"), server->passphrase);
+      mobs::decryptPrivateRsa(sess->cipher(), inhalt, Filestore::privateKey(), "Nd7d/lk");
       string buf((char *)&inhalt[0], inhalt.size());
       SessionLoginData data;
       mobs::string2Obj(buf, data, mobs::ConvObjFromStr());
       LOG(LM_DEBUG, "INFO = " << data.to_string());
-
+      Filestore store(conName);
+      string keyFile;
+      string user;
+      if (not store.findUser(data.login(), user, keyFile))
+        THROW("invalid login ident " << data.login());
       u_int id;
       if (not(ctx = server->newSession(id, data.login())))
         THROW("no more sessions");
+      ctx->user = user;
       SessionResult result;
       result.id(id);
-
-      string keyFile = STRSTR(server->keystorePath << '/' << ctx->login << ".pem");
+//      string keyFile = STRSTR(server->keystorePath << '/' << ctx->login << ".pem");
       vector<u_char> cipher;
       // Der Session-Key wird mit dem privaten Schlüssel des Clients codiert
       mobs::encryptPublicRsa(ctx->key, cipher, keyFile);
@@ -281,13 +279,7 @@ public:
     } else if (auto *gp = dynamic_cast<GetPub *>(obj)) {
       PublicKey pkey;
       pkey.id(gp->id());
-      ifstream ks(STRSTR(server->keystorePath << '/' << server->name << ".pem"));
-      if (ks) {
-        stringstream ss;
-        ss << ks.rdbuf();
-        ks.close();
-        pkey.key(ss.str());
-      }
+      pkey.key(Filestore::publicKey());
       pkey.traverse(xo);
 //      if (needDelimiter)
 //        xmlResult.putc(0);
@@ -1089,14 +1081,13 @@ void MRpcServer::server() {
 
 
 void usage() {
-  cerr << "usage: mrpcsrv [-g] [-p passphrase] [-k keystore] [-b base]\n"
-       << " -p passphrase default = '12345'\n"
-       << " -k keystore directory for keys, default = 'keystore'\n"
-       << " -n keyname name for key, default = 'server'\n"
+  cerr << "usage: mrpcsrv [-g] [-b base]\n"
+       << "       mrpcsrv -a privatKeyFile -u username\n"
        << " -P Port default = '4444'\n"
        << " -b base dir default = 'DocSrvFiles'\n"
        << "    mongo uri eg. 'mongodb://localhost:27017'\n"
        << " -c configfile lese Config aus Datei in DB und beende\n"
+       << " -a pem-file -u userName add new public key and user\n"
        << " -g generate key and exit\n";
 
   exit(1);
@@ -1106,28 +1097,18 @@ int main(int argc, char* argv[]) {
   TRACE("");
 
   string base = "DocSrvFiles";
-  string passphrase = "12345";
-  string keystore = "keystore";
-  string keyname = "server";
   string port = "4444";
   string configfile;
+  string file;
+  string user;
   bool genkey = false;
 
   try {
     char ch;
-    while ((ch = getopt(argc, argv, "gp:n:P:b:c:")) != -1) {
+    while ((ch = getopt(argc, argv, "gP:b:c:a:u:")) != -1) {
       switch (ch) {
         case 'g':
           genkey = true;
-          break;
-        case 'p':
-          passphrase = optarg;
-          break;
-        case 'k':
-          keystore = optarg;
-          break;
-        case 'n':
-          keyname = optarg;
           break;
         case 'P':
           port = optarg;
@@ -1135,8 +1116,14 @@ int main(int argc, char* argv[]) {
         case 'b':
           base = optarg;
           break;
-       case 'c':
-         configfile = optarg;
+        case 'c':
+          configfile = optarg;
+          break;
+        case 'a':
+          file = optarg;
+          break;
+        case 'u':
+          user = optarg;
           break;
         case '?':
         default:
@@ -1145,24 +1132,38 @@ int main(int argc, char* argv[]) {
     }
 
     MRpcServer srv;
-    srv.passphrase = passphrase;
-    srv.keystorePath = keystore;
-    srv.name = keyname;
     srv.service = port;
 
+
+
+    mobs::DatabaseManager dbmgr; // darf nur einmalig eingerichtet werden und muss bis zum letzten Verwenden einer Datenbank bestehen bleiben
+    Filestore::setBase(base, genkey);
     if (genkey) {
-      srv.genKey();
       exit(0);
     }
-    mobs::DatabaseManager dbmgr; // darf nur einmalig eingerichtet werden und muss bis zum letzten Verwenden einer Datenbank bestehen bleiben
-    Filestore::setBase(base);
-
-    ifstream k(STRSTR(keystore << '/' <<  keyname << "_priv.pem"));
-    if (not k.is_open()) {
-      cerr << "private key not found - generate with -g" << endl;
-      exit(1);
+    if (not file.empty()) {
+      if (user.empty())
+        usage();
+      ifstream k(file);
+      if (not k.is_open()) {
+        cerr << "public key not found" << endl;
+        return 1;
+      }
+      stringstream pub;
+      pub << k.rdbuf();
+      k.close();
+      string fp;
+      try {
+        fp = mobs::getRsaFingerprint(pub.str());
+      } catch (exception &e) {
+        cerr << "invalid key file" << endl;
+        return 1;
+      }
+      LOG(LM_INFO, "Add Key " << user << " " << fp);
+      Filestore().addUser(fp, user, pub.str());
+      return 0;
+      exit(0);
     }
-    k.close();
 
     if (not configfile.empty()) {
       Filestore().loadTemplatesFromFile(configfile);
