@@ -39,6 +39,7 @@
 #include <QFileDialog>
 #include <QRadioButton>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QFormLayout>
 #include <QButtonGroup>
 #include <QDateTimeEdit>
@@ -125,6 +126,7 @@ public:
   QLineEdit *l2 = nullptr;
   QDateTimeEdit *d1 = nullptr;
   QDateTimeEdit *d2 = nullptr;
+  QComboBox *dc = nullptr;
   QCheckBox *c1 = nullptr;
   QButtonGroup *bg = nullptr;
 };
@@ -480,22 +482,61 @@ void MainWindow::initTags(const TemplateInfo &templateInfo) {
         sTag->c1->setChecked(dateSelect);
         if (templateInfo.type() == TemplateSearch) {
           layout1->addWidget(new QLabel("-", sTag->d1), 0, 2);
-          if (t.format().empty()) {
+          sTag->dc = new QComboBox(parent);
+          sTag->dc->setEditable(false);
+          sTag->dc->addItem(tr("free"));
+          sTag->dc->addItem(tr("1 day"));
+          sTag->dc->addItem(tr("7 days"));
+          sTag->dc->addItem(tr("14 days"));
+          sTag->dc->addItem(tr("1 month"));
+          sTag->dc->addItem(tr("3 months"));
+          sTag->dc->addItem(tr("1 year"));
+          connect(sTag->dc, &QComboBox::currentTextChanged, [this, sTag] {
+            int idx = sTag->dc->currentIndex();
+            sTag->d2->setEnabled(idx == 0);
+            switch(idx) {
+              case 1: sTag->d2->setDate(sTag->d1->date()); break;
+              case 2: sTag->d2->setDate(sTag->d1->date().addDays(7)); break;
+              case 3: sTag->d2->setDate(sTag->d1->date().addDays(14)); break;
+              case 4: sTag->d2->setDate(sTag->d1->date().addMonths(1)); break;
+              case 5: sTag->d2->setDate(sTag->d1->date().addMonths(3)); break;
+              case 6: sTag->d2->setDate(sTag->d1->date().addYears(1)); break;
+            }
+          });
+          if (t.format().empty())
             sTag->d2 = new QDateEdit(parent);
-          } else
+          else
             sTag->d2 = new QDateTimeEdit(parent);
           sTag->d2->setCalendarPopup(true);
           sTag->d2->setMinimumDate(QDate::currentDate().addYears(-40));
           sTag->d2->setMaximumDate(QDate::currentDate().addYears(+20));
           sTag->d2->setDate(QDate::currentDate());
           layout1->addWidget(sTag->d2, 0, 3);
+          layout1->addWidget(sTag->dc, 0, 4);
           sTag->d1->setEnabled(dateSelect);
           sTag->d2->setEnabled(dateSelect);
+          sTag->dc->setEnabled(dateSelect);
           dateSelect = false;
+//          connect(sTag->d1, SIGNAL(dateChanged(const QDate &)), sTag->dc, SLOT(currentTextChanged()));
+          connect(sTag->d1, &QDateTimeEdit::dateChanged, [this, sTag] {
+            int idx = sTag->dc->currentIndex();
+            sTag->d2->setEnabled(idx == 0);
+            switch(idx) {
+              case 1: sTag->d2->setDate(sTag->d1->date()); break;
+              case 2: sTag->d2->setDate(sTag->d1->date().addDays(7)); break;
+              case 3: sTag->d2->setDate(sTag->d1->date().addDays(14)); break;
+              case 4: sTag->d2->setDate(sTag->d1->date().addMonths(1)); break;
+              case 5: sTag->d2->setDate(sTag->d1->date().addMonths(3)); break;
+              case 6: sTag->d2->setDate(sTag->d1->date().addYears(1)); break;
+            }
+          });
         }
         connect(sTag->c1, &QCheckBox::stateChanged, [this, sTag] {
           sTag->d1->setEnabled(sTag->c1->isChecked());
-          if (sTag->d2) sTag->d2->setEnabled(sTag->c1->isChecked());
+          if (sTag->d2) {
+            sTag->d2->setEnabled(sTag->c1->isChecked() and sTag->dc->currentIndex() == 0);
+            sTag->dc->setEnabled(sTag->c1->isChecked());
+          }
         });
 //        sTag->l1 = new QLineEdit(parent);
 //        sTag->l2 = new QLineEdit(parent);
