@@ -147,7 +147,7 @@ public:
   //  void tagSearch(const std::list<TagSearchInfo> &searchList, std::list<SearchResult> &result);
   /// alle Bedingungen oder-verknüpfen
   std::list<SearchResult> searchTags(const std::string &pool, const std::map<std::string, TagSearch> &searchList,
-                                     const std::set<int> &buckets, const std::string &groupName);
+                                     const std::set<int> &buckets, const std::string &groupName, std::function<void (int)> ckFun);
   /// tag info zu einem Dokument
   void getTagInfo(DocId id, std::list<SearchResult> &result, DocInfo &doc);
   /// document indo

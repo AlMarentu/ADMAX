@@ -27,6 +27,7 @@
 #include <set>
 #include <utility>
 #include <mobs/rsa.h>
+//#include <unistd.h>
 #include "mobs/dbifc.h"
 #include "mobs/logging.h"
 
@@ -476,7 +477,7 @@ std::string Filestore::tagName(TagId id) {
 
 std::list<SearchResult>
 Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSearch> &searchList,
-                      const std::set<int> &buckets, const std::string &groupName) {
+                      const std::set<int> &buckets, const std::string &groupName, std::function<void (int)> ckFun) {
   LOG(LM_INFO, "search ");
   std::chrono::system_clock::time_point begin = std::chrono::system_clock::now();
   std::chrono::system_clock::time_point now;
@@ -492,6 +493,8 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
 
   std::list<uint64_t> docList;
   std::set<uint64_t> docIdsPrim; // Ids der Primary muss mit allen anderen Buckets eine Schnittmenge bilden
+  int cnt = 0;
+  int maxCnt = buckets.size();
   for (auto bucket:buckets) {
     LOG(LM_INFO, "SEARCH BUCKET " << bucket);
     // pro SearchList-Eintrag (tag) eine Query und Schnittmenge aus Ergebnissen bilden
@@ -560,6 +563,8 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
       now = std::chrono::system_clock::now();
       LOG(LM_INFO, "TIME " << std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count());
       while (not cursor->eof()) {
+        ckFun(20 * cnt / maxCnt);
+//        usleep(50000);
         dbi.retrieve(ti, cursor);
         LOG(LM_INFO, "Z " << ti.to_string());
         // Schnittmenge aller sets bilden
@@ -611,6 +616,7 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
     }
     if (bucket != 0 or buckets.size() == 1)
       docList.insert(docList.end(), docIds.begin(), docIds.end());
+    cnt++;
   }
 
   if (docList.empty())
@@ -623,7 +629,12 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
   Q query2;
   query2 << Q::AndBegin << ti.active.QiEq(true) << ti.docId.QiIn(docList) << Q::AndEnd;
 
+  std::set<uint64_t> docRead;
+  maxCnt = docList.size();
   for (auto cursor = dbi.query(ti, query2); not cursor->eof(); cursor->next()) {
+    ckFun(20 + 80 * docRead.size() / maxCnt);
+//    usleep(50000);
+
     dbi.retrieve(ti, cursor);
     SearchResult r;
     r.tagId = ti.tagId();
@@ -636,6 +647,7 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
       r.docId = ti.docId();
       result.emplace_front(r);  // thus primary is sorted first
     }
+    docRead.insert(r.docId);
   }
   now = std::chrono::system_clock::now();
   LOG(LM_INFO, "TIME " << std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count());

@@ -184,9 +184,9 @@ string SessionContext::setTemplate(const string &templateName) {
 // Worker-Context mit XML-Parser
 class XmlInput : public mobs::XmlReader {
 public:
-  explicit XmlInput(wistream &str, mobs::XmlWriter &res, mobs::CryptIstrBuf &stbi, mobs::CryptOstrBuf &stbo, int tId,
+  explicit XmlInput(wistream &str, mobs::XmlWriter &res, mobs::tcpstream &tcpst, mobs::CryptIstrBuf &stbi, mobs::CryptOstrBuf &stbo, int tId,
                     MRpcServer *s, const string &c)
-          : XmlReader(str), xmlResult(res), streambufI(stbi), streambufO(stbo), taskId(tId), server(s), conName(c) { }
+          : XmlReader(str), xmlResult(res), tcpstream(tcpst), streambufI(stbi), streambufO(stbo), taskId(tId), server(s), conName(c) { }
   ~XmlInput() { if (ctx) ctx->release(); }
 
   void StartTag(const std::string &element) override {
@@ -337,10 +337,14 @@ public:
     xmlResult.startEncrypt(new mobs::CryptBufAes(ctx->key, iv, "", true));
     encryptedOutput = true;
   }
-
+  void checkStream() {
+    tcpstream.poll();
+    LOG(LM_INFO, "CHECK " << tcpstream.bad());
+  }
 
 
   mobs::XmlWriter &xmlResult;
+  mobs::tcpstream &tcpstream;
   mobs::CryptIstrBuf &streambufI;
   mobs::CryptOstrBuf &streambufO;
   int taskId;
@@ -692,8 +696,26 @@ void ExecVisitor::visit(SearchDocument &obj) {
   }
   else
     buckets.insert(0);
-
-  list<SearchResult> result = store.searchTags(pool, tagSearch, buckets, context.cacheGroupName);
+  int percent = 0;
+  std::chrono::system_clock::time_point last = std::chrono::system_clock::now();
+  list<SearchResult> result = store.searchTags(pool, tagSearch, buckets, context.cacheGroupName,
+                                               [this, &percent, &last](int p)
+                                               {
+                                                 m_xi.checkStream();
+                                                 if (p > percent) {
+                                                   std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+                                                   if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count() > 900) {
+                                                     Progress pr;
+                                                     pr.percent(p);
+                                                     pr.traverse(m_xmlOut);
+                                                     m_xi.endEncryption();
+                                                     m_xi.needEncryption();
+                                                     percent = p;
+                                                     last = now;
+                                                   }
+                                                   LOG(LM_INFO, "PERCENT " << p);
+                                                 }
+                                               });
 
   map<TagId, string> tagNames;  // TODO cache in tagSearch mitverwenden
   tagNames[0] = "prim$$";
@@ -967,7 +989,7 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
 
 
       // XML-Parser erledigt die eigentliche Arbeit in seinen Callback-Funktionen
-      XmlInput xr(x2in, xf, streambufI, streambufO, id, server, con);
+      XmlInput xr(x2in, xf, xstream, streambufI, streambufO, id, server, con);
       xr.readTillEof(false);
 
 
