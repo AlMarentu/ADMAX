@@ -151,6 +151,15 @@ public:
 #endif
 };
 
+class Progress : virtual public mobs::ObjectBase
+{
+public:
+  ObjInit(Progress);
+
+  MemVar(int, percent);
+  MemVar(std::string, comment);
+};
+
 
 MOBS_ENUM_DEF(DocumenType, DocumentUnknown, DocumentPdf, DocumentJpeg, DocumentTiff, DocumentHtml, DocumentText);
 MOBS_ENUM_VAL(DocumenType, "unk",           "pdf",       "jpg",        "tif",        "htm",        "txt");

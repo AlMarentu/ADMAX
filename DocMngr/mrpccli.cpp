@@ -209,7 +209,11 @@ public:
         LOG(LM_ERROR, "pub key already assigned");
       // parsen abbrechen
       stop();
-  } else {
+    } else if (auto pk = dynamic_cast<Progress *>(obj)) {
+      LOG(LM_INFO, "PROGRESS " << pk->percent());
+      percent = pk->percent();
+      stop();
+    } else {
       objReturn = obj;
       stop();
       return;
@@ -223,6 +227,7 @@ public:
   bool ready = false;
   bool skipDelim = false;
 //  bool newBlock = false;
+  int percent = -1;
 
   std::string errorMsg;
 
@@ -562,7 +567,18 @@ void MrpcClient::readyRead() {
 //    std::cout << "Parse start ===========\n";
     if (not eob and data->xr.encryptedInput)  // wenn kein Blockende, dann sicherheitshalber nach jedem Token stoppen
       data->xr.stop();
-    data->xr.parse();
+    for (;;) {
+      data->xr.percent = -1;
+      data->xr.parse();
+      if (data->xr.percent < 0)
+        break;
+      if (data->xr.percent <= 100) {
+        int p = data->percentStart +
+                (data->percentEnd - data->percentStart) * data->xr.percent / 100;
+        if (progress and p < 100)
+          progress->setValue(p);
+      }
+    }
     if (data->state == MrpcClientData::GetServerKey) {
       LOG(LM_INFO, "got server key send login");
       sendLogin();

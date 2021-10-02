@@ -73,6 +73,7 @@ ObjRegister(CommandResult);
 ObjRegister(SessionLogin);
 ObjRegister(SessionResult);
 ObjRegister(PublicKey);
+ObjRegister(Progress);
 
 ObjRegister(Document);
 ObjRegister(DocumentRaw);
@@ -888,7 +889,7 @@ void MainWindow::searchDocument() {
     LOG(LM_INFO, "MAIN sent");
     int t1 = mrpc->elapsed.nsecsElapsed() / 1000000;
 
-    mobs::ObjectBase *obj = mrpc->sendAndWaitObj(&sd, 10);
+    mobs::ObjectBase *obj = mrpc->sendAndWaitObj(&sd, 90);
 //    mobs::ObjectBase *obj = mrpc->execNextObj(10);
     int t2 = mrpc->elapsed.nsecsElapsed() / 1000000;
     ui->statusbar->showMessage(tr("ms: %1 %2").arg(t1).arg(t2), 10000);
