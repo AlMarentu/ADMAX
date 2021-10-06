@@ -458,20 +458,18 @@ TagId Filestore::findTag(const std::string &pool, const std::string &tagName, in
 }
 
 std::string Filestore::tagName(TagId id) {
-  LOG(LM_INFO, "tagName " << id);
+  std::string result;
   auto dbi = mobs::DatabaseManager::instance()->getDbIfc(conName);
   DMGR_TagInfo tpool;
   tpool.id(id);
   auto cursor = dbi.qbe(tpool);
-  if (cursor->eof()) {
-    return 0;
-  }
-  else {
+  if (not cursor->eof()) {
     // Tag bereits bekannt
     dbi.retrieve(tpool, cursor);
-    return tpool.name();
+    result = tpool.name();
   }
-  return "";
+  LOG(LM_INFO, "tagName " << id << "->" << result);
+  return result;
 }
 
 
@@ -563,10 +561,10 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
       now = std::chrono::system_clock::now();
       LOG(LM_INFO, "TIME " << std::chrono::duration_cast<std::chrono::milliseconds>(now - begin).count());
       while (not cursor->eof()) {
-        ckFun(20 * cnt / maxCnt);
+        ckFun(80 * cnt / maxCnt);
 //        usleep(50000);
         dbi.retrieve(ti, cursor);
-        LOG(LM_INFO, "Z " << ti.to_string());
+        LOG(LM_DEBUG, "Z " << ti.to_string());
         // Schnittmenge aller sets bilden
         if (start or docIdsTmp.find(ti.docId()) != docIdsTmp.end())
           docIds.emplace(ti.docId());
@@ -632,7 +630,8 @@ Filestore::searchTags(const std::string &pool, const std::map<std::string, TagSe
   std::set<uint64_t> docRead;
   maxCnt = docList.size();
   for (auto cursor = dbi.query(ti, query2); not cursor->eof(); cursor->next()) {
-    ckFun(20 + 80 * docRead.size() / maxCnt);
+    ckFun(95);
+//    ckFun(20 + 80 * docRead.size() / maxCnt);
 //    usleep(50000);
 
     dbi.retrieve(ti, cursor);

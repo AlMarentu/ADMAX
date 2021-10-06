@@ -339,7 +339,7 @@ public:
   }
   void checkStream() {
     tcpstream.poll();
-    LOG(LM_INFO, "CHECK " << tcpstream.bad());
+    LOG(LM_DEBUG, "CHECK " << tcpstream.bad());
   }
 
 
@@ -712,8 +712,8 @@ void ExecVisitor::visit(SearchDocument &obj) {
                                                      m_xi.needEncryption();
                                                      percent = p;
                                                      last = now;
+                                                     LOG(LM_INFO, "PERCENT " << p);
                                                    }
-                                                   LOG(LM_INFO, "PERCENT " << p);
                                                  }
                                                });
 
@@ -983,7 +983,7 @@ void MRpcServer::worker_thread(int id, MRpcServer *server) {
       xf.writeTagBegin(L"methodResponse");
 
 
-      cout << "TTT " << std::boolalpha << x2out.fail() << " " << x2out.tellp() << endl;
+//      cout << "TTT " << std::boolalpha << x2out.fail() << " " << x2out.tellp() << endl;
 
 //    x2out << mobs::CryptBufBase::base64(true);
 
@@ -1110,7 +1110,8 @@ void usage() {
        << "    mongo uri eg. 'mongodb://localhost:27017'\n"
        << " -c configfile lese Config aus Datei in DB und beende\n"
        << " -a pem-file -u userName add new public key and user\n"
-       << " -g generate key and exit\n";
+       << " -g generate key and exit\n"
+       << " -v Debug-Level\n";
 
   exit(1);
 }
@@ -1118,6 +1119,7 @@ int main(int argc, char* argv[]) {
 //  logging::Trace::traceOn = true;
   TRACE("");
 
+  logging::currentLevel = logging::lm_info;
   string base = "DocSrvFiles";
   string port = "4444";
   string configfile;
@@ -1127,7 +1129,7 @@ int main(int argc, char* argv[]) {
 
   try {
     char ch;
-    while ((ch = getopt(argc, argv, "gP:b:c:a:u:")) != -1) {
+    while ((ch = getopt(argc, argv, "gP:b:c:a:u:v")) != -1) {
       switch (ch) {
         case 'g':
           genkey = true;
@@ -1146,6 +1148,9 @@ int main(int argc, char* argv[]) {
           break;
         case 'u':
           user = optarg;
+          break;
+        case 'v':
+          logging::currentLevel = logging::lm_debug;
           break;
         case '?':
         default:
