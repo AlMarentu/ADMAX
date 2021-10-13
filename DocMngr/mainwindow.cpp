@@ -48,6 +48,8 @@
 #include <set>
 #include <fstream>
 #include <QInputDialog>
+#include <QScrollArea>
+#include <QSplitter>
 
 #include "mrpccli.h"
 #include "viewer.h"
@@ -87,6 +89,12 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
   ui->setupUi(this);
+  // rebase with splitter
+  auto split = new QSplitter(Qt::Orientation::Horizontal, this);
+  split->addWidget(ui->groupBox);
+  split->addWidget(ui->widget);
+  setCentralWidget(split);
+
   logging::currentLevel = LM_INFO;
   LOG(LM_INFO, "start");
 
@@ -103,8 +111,6 @@ MainWindow::MainWindow(QWidget *parent) :
 
   QTimer::singleShot(1, this, SLOT(initKey()));
 
-
-//  initTags(1);
 }
 
 MainWindow::~MainWindow()
@@ -345,16 +351,24 @@ void MainWindow::initTags(int templateId) {
   const TemplateInfo &templateInfo = templateId > 1 ? ti2 : ti2;
 
   std::cout << templateInfo.to_string() << std::endl;
+  ui->tabWidgetTags->clear();
   initTags(templateInfo);
 }
-
+namespace {
+// ScrollArea without sizeHint
+class MScrollArea : public QScrollArea {
+public:
+  MScrollArea(QWidget *parent) : QScrollArea(parent) {};
+  ~MScrollArea() override = default;
+  QSize sizeHint() const override { return {450, 200}; }
+};
+}
 void MainWindow::initTags(const TemplateInfo &templateInfo) {
-  int count = 0;
-  QWidget *parent = ui->tabWidgetTagsPage1; // ui->groupBoxTags;
-  if (not actionTemplates.empty()) {
-    parent = new QWidget(ui->tabWidgetTags);
-    count = ui->tabWidgetTags->addTab(parent, "");
-  }
+
+  auto *parent = new QWidget(ui->tabWidgetTags);
+  auto *sa = new MScrollArea(parent);
+  int count = ui->tabWidgetTags->addTab(sa, "");
+
   LOG(LM_INFO, "TAB " << count);
   auto &currentTemplate = actionTemplates[count];
   currentTemplate.extraTags.emplace("OriginalFileName");  // TODO
@@ -586,7 +600,12 @@ void MainWindow::initTags(const TemplateInfo &templateInfo) {
 
 
   }
-
+  if (sa) {
+    sa->setWidget(parent);
+//    sa->setWidgetResizable(true);
+    sa->adjustSize();
+    sa->show();
+  }
 
 }
 
@@ -842,6 +861,8 @@ void MainWindow::getConfiguration() {
     std::ofstream oo("conf.json");
     oo << obj->to_string(mobs::ConvObjToString().exportJson().doIndent());
     oo.close();
+    ui->tabWidgetTags->clear();
+    actionTemplates.clear();
     if (auto c = dynamic_cast<ConfigResult *>(obj)) {
       for (auto &i:c->templates)
         initTags(i);
@@ -1106,7 +1127,6 @@ void MainWindow::server() {
     obj.setValue("main/host", host);
     LOG(LM_INFO, "Set host to " << host.toStdString());
     MrpcClient::setHost(host);
-    ui->tabWidgetTags->clear();
     getConfiguration();
   }
 }
