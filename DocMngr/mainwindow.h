@@ -57,6 +57,7 @@ public slots:
   void searchRowClicked(int row, int col);
   void searchRowClicked(QTreeWidgetItem*,int);
   void initKey();
+  void exportKey();
   void changePass();
   void getConfiguration();
 

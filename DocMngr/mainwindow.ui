@@ -172,7 +172,9 @@
     <addaction name="actionServer"/>
     <addaction name="actionprint"/>
     <addaction name="actionSave"/>
+    <addaction name="separator"/>
     <addaction name="actionchange_passwprd"/>
+    <addaction name="actionexport_key"/>
    </widget>
    <widget class="QMenu" name="menuBearbeiten">
     <property name="title">
@@ -221,6 +223,11 @@
   <action name="actionchange_passwprd">
    <property name="text">
     <string>change passwprd</string>
+   </property>
+  </action>
+  <action name="actionexport_key">
+   <property name="text">
+    <string>export key</string>
    </property>
   </action>
  </widget>
@@ -378,8 +385,24 @@
    <slot>changePass()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>82</x>
-     <y>388</y>
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>626</x>
+     <y>417</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>actionexport_key</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>exportKey()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
     </hint>
     <hint type="destinationlabel">
      <x>626</x>
@@ -400,5 +423,6 @@
   <slot>print()</slot>
   <slot>saveFile()</slot>
   <slot>changePass()</slot>
+  <slot>exportKey()</slot>
  </slots>
 </ui>

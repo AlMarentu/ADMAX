@@ -80,191 +80,198 @@ p, li { white-space: pre-wrap; }
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="179"/>
+        <location filename="mainwindow.ui" line="181"/>
         <source>Bearbeiten</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="189"/>
+        <location filename="mainwindow.ui" line="191"/>
         <source>Exit</source>
         <translation type="unfinished">Beenden</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="192"/>
+        <location filename="mainwindow.ui" line="194"/>
         <source>Programm beenden</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="197"/>
+        <location filename="mainwindow.ui" line="199"/>
         <source>XXXX</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="202"/>
-        <location filename="mainwindow.ui" line="205"/>
+        <location filename="mainwindow.ui" line="204"/>
+        <location filename="mainwindow.ui" line="207"/>
         <source>Server</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="210"/>
+        <location filename="mainwindow.ui" line="212"/>
         <source>Print</source>
         <translation type="unfinished">Drucken</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="213"/>
+        <location filename="mainwindow.ui" line="215"/>
         <source>Ctrl+P</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="218"/>
+        <location filename="mainwindow.ui" line="220"/>
         <source>Save</source>
         <translation type="unfinished">Speichern</translation>
     </message>
     <message>
-        <location filename="mainwindow.ui" line="223"/>
+        <location filename="mainwindow.ui" line="225"/>
         <source>change passwprd</source>
         <translation type="unfinished">Passwort ändern</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="405"/>
+        <location filename="mainwindow.ui" line="230"/>
+        <source>export key</source>
+        <translation type="unfinished">Schlüssel exportieren</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.cpp" line="420"/>
         <source>File</source>
         <translation type="unfinished">Dokument</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="409"/>
+        <location filename="mainwindow.cpp" line="424"/>
         <source>open</source>
         <translation type="unfinished">öffnen</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="487"/>
+        <location filename="mainwindow.cpp" line="502"/>
         <source>free</source>
         <translation type="unfinished">frei</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="488"/>
+        <location filename="mainwindow.cpp" line="503"/>
         <source>1 day</source>
         <translation type="unfinished">1 Tag</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="489"/>
+        <location filename="mainwindow.cpp" line="504"/>
         <source>7 days</source>
         <translation type="unfinished">7 Tage</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="490"/>
+        <location filename="mainwindow.cpp" line="505"/>
         <source>14 days</source>
         <translation type="unfinished">14 Tage</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="491"/>
+        <location filename="mainwindow.cpp" line="506"/>
         <source>1 month</source>
         <translation type="unfinished">1 Monat</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="492"/>
+        <location filename="mainwindow.cpp" line="507"/>
         <source>3 months</source>
         <translation type="unfinished">3 Monate</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="493"/>
+        <location filename="mainwindow.cpp" line="508"/>
         <source>1 year</source>
         <translation type="unfinished">1 Jahr</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="575"/>
+        <location filename="mainwindow.cpp" line="590"/>
         <source>alle</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="575"/>
+        <location filename="mainwindow.cpp" line="590"/>
         <source>--</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="671"/>
+        <location filename="mainwindow.cpp" line="691"/>
         <source>%1 %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="691"/>
+        <location filename="mainwindow.cpp" line="711"/>
         <source>Open File</source>
         <translation type="unfinished">Dokument öffnen</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="692"/>
+        <location filename="mainwindow.cpp" line="712"/>
         <source>PDF (*.pdf);;Images (*.png *.xpm *.jpg *.tif)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="731"/>
+        <location filename="mainwindow.cpp" line="751"/>
         <source>Old password is wrong</source>
         <translation type="unfinished">Das alte Passwort stimmt nicht überein</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="744"/>
+        <location filename="mainwindow.cpp" line="764"/>
         <source>error changing password</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="761"/>
+        <location filename="mainwindow.cpp" line="781"/>
         <source>can&apos;t generate key - quit</source>
         <oldsource>cann&apos;t generate key - quit</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="766"/>
+        <location filename="mainwindow.cpp" line="786"/>
+        <location filename="mainwindow.cpp" line="809"/>
         <source>Save public key</source>
         <translation type="unfinished">Speichern des öffentlichen Schlüssels</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="766"/>
+        <location filename="mainwindow.cpp" line="786"/>
+        <location filename="mainwindow.cpp" line="809"/>
         <source>PEM (*.pem)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="781"/>
+        <location filename="mainwindow.cpp" line="801"/>
         <source>nothing changed</source>
         <translation type="unfinished">Es wurde nichts verändert</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="794"/>
+        <location filename="mainwindow.cpp" line="825"/>
         <source>Password:</source>
         <translation type="unfinished">Passwort</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="800"/>
+        <location filename="mainwindow.cpp" line="831"/>
         <source>a password is needed</source>
         <translation type="unfinished">Ein Passwort wird benbötigt</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="801"/>
+        <location filename="mainwindow.cpp" line="832"/>
         <source>Do you want to create new key files?</source>
         <translation type="unfinished">Wollen Sie ein neues Schlüsselpaar erzeugen?</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="804"/>
+        <location filename="mainwindow.cpp" line="835"/>
         <source>create new</source>
         <translation type="unfinished">Neu erzeugen</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="837"/>
-        <location filename="mainwindow.cpp" line="894"/>
-        <location filename="mainwindow.cpp" line="1031"/>
+        <location filename="mainwindow.cpp" line="868"/>
+        <location filename="mainwindow.cpp" line="927"/>
+        <location filename="mainwindow.cpp" line="1064"/>
         <source>ms: %1 %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1050"/>
+        <location filename="mainwindow.cpp" line="1083"/>
         <source>ms: %1 %2 %3</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1101"/>
+        <location filename="mainwindow.cpp" line="1134"/>
         <source>Server Settings</source>
         <translation type="unfinished">Server Einstellungen</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1102"/>
+        <location filename="mainwindow.cpp" line="1135"/>
         <source>host:port</source>
         <translation type="unfinished"></translation>
     </message>
@@ -272,12 +279,12 @@ p, li { white-space: pre-wrap; }
 <context>
     <name>MrpcClient</name>
     <message>
-        <location filename="mrpccli.cpp" line="289"/>
+        <location filename="mrpccli.cpp" line="294"/>
         <source>Verbindung</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mrpccli.cpp" line="289"/>
+        <location filename="mrpccli.cpp" line="294"/>
         <source>Abbruch</source>
         <translation type="unfinished"></translation>
     </message>

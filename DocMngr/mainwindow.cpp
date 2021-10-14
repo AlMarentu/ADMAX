@@ -805,6 +805,17 @@ void MainWindow::initKey() {
   QTimer::singleShot(1, this, SLOT(getConfiguration()));
 }
 
+void MainWindow::exportKey() {
+  QString file = QFileDialog::getSaveFileName(this, tr("Save public key"), "", tr("PEM (*.pem)"));
+  if (not file.isEmpty()) {
+    std::ofstream pem(file.toUtf8().data(), std::ios::trunc);
+    if (pem.is_open()) {
+      pem << MrpcClient::publicKey;
+      pem.close();
+    }
+  }
+}
+
 void MainWindow::getConfiguration() {
   MrpcClient::fingerprint = mobs::getRsaFingerprint(MrpcClient::publicKey);
   if (MrpcClient::passwd.empty()) {
