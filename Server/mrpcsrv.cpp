@@ -60,6 +60,12 @@ public:
   explicit MrpcException(const std::string &msg) : std::runtime_error(msg) {};
 };
 
+class MrpcAccessDenied : public std::runtime_error {
+public:
+  explicit MrpcAccessDenied(const char *msg) : std::runtime_error(msg) {};
+  explicit MrpcAccessDenied(const std::string &msg) : std::runtime_error(msg) {};
+};
+
 class MRpcServer {
 public:
   std::string service = "4444";
@@ -109,6 +115,8 @@ public:
   map<string, TagInfoCache> tagInfoCache;
   // Caches, für die Buckets
   map<string, BucketPool> bucketCache;
+  // Liste der Ids zur letzten Suche, damit nicht wahllos Ids abgerufen werden können
+  set<DocId> accessibleIds;
   string poolCache;
   string cacheTemplate;
   string cacheGroupName;
@@ -321,8 +329,14 @@ public:
       needEncryption();
 
       ExecVisitor vi(xo, *this);
-      obj->visit(vi);
-
+      try {
+        obj->visit(vi);
+      } catch (MrpcAccessDenied &e) {
+        LOG(LM_ERROR, "MrpcAccessDenied " << e.what());
+        SessionError error;
+        error.error(SErrAccessDenied);
+        error.traverse(xo);
+      }
       if (attachmentInfo.fileSize) {
         delete obj;
         return;
@@ -500,6 +514,9 @@ void ExecVisitor::visit(GetDocument &obj) {
   TRACE("");
   if (not m_xi.ctx)
     THROW("missing session context");
+  // nut Dokumente aus vorheriger Query erlauben
+  if (m_xi.ctx->accessibleIds.find(obj.docId()) == m_xi.ctx->accessibleIds.end())
+    throw MrpcAccessDenied(LOGSTR("no access to Document " << obj.docId()));
   Filestore store(m_xi.conName);
   list<SearchResult> result;
   DocInfo docInfo;
@@ -619,6 +636,7 @@ void ExecVisitor::visit(SearchDocument &obj) {
     store.loadTemplates(context.tInfo);
   if (context.bucketCache.empty())
     store.loadBuckets(context.bucketCache);
+  context.accessibleIds.clear();
 
   // TODO Template prüfen (=Rechte), fixed Tags hinzu
   string pool = context.setTemplate(obj.templateName());
@@ -749,6 +767,7 @@ void ExecVisitor::visit(SearchDocument &obj) {
     skip.insert(it->docId);
     auto &r = sr.tags[mobs::MemBaseVector::nextpos];
     r.docId(it->docId);
+    context.accessibleIds.insert(it->docId);
     for (auto it2 = it; it2 != result.cend(); it2++) {
       if (it2->docId == it->docId) {
         auto tn = tagNames.find(it2->tagId);

@@ -47,6 +47,12 @@ public:
   explicit ExcConn(const std::string &msg) : std::runtime_error(msg) {};
 };
 
+class ExcAccess : public std::runtime_error {
+public:
+  explicit ExcAccess(const char *msg) : std::runtime_error(msg) {};
+  explicit ExcAccess(const std::string &msg) : std::runtime_error(msg) {};
+};
+
 class MrpcClient : public QObject {
   Q_OBJECT
 

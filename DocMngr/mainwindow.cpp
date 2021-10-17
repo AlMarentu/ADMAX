@@ -1099,6 +1099,10 @@ void MainWindow::loadDocument(int64_t doc)
     LOG(LM_INFO, "MAIN ready");
 
     mrpc->close();
+  } catch (ExcAccess &e) {
+    LOG(LM_ERROR, "Exception in load doc " << e.what());
+    ui->widget->clearViewer();
+    QMessageBox::information(this, windowTitle(), tr("your query has expired"));
   } catch (ExcCancelled &e) {
     LOG(LM_ERROR, "Exception in load doc " << e.what());
     ui->statusbar->showMessage(tr("cancelled"), 10000);

@@ -753,6 +753,9 @@ void Viewer::clearViewer() {
   data->pages.clear();
   data->thumbs = nullptr;
   data->grid = nullptr;
+  auto w = ui->scrollArea->widget();
+  if (w)
+    w->hide();
 #ifdef USE_POPPLER
   delete data->document;
 #else

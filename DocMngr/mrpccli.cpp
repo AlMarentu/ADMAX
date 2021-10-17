@@ -198,10 +198,10 @@ public:
         errorMsg = "CERT";
         skipDelim = true;
       } else if (sess->error() == SErrNoMoreCon) {
-        XmlInput::sessionKey.clear();
-        XmlInput::sessionId = 0;
         errorMsg = "CONS";
         skipDelim = true;
+      } else if (sess->error() == SErrAccessDenied) {
+        errorMsg = "ACCESS";
       }
       // parsen abbrechen
       stop();
@@ -521,6 +521,8 @@ int MrpcClient::exec() {
       throw ExcCert(data->xr.errorMsg);
     else if (data->xr.errorMsg == "CONS")
       throw ExcConn(data->xr.errorMsg);
+    else if (data->xr.errorMsg == "ACCESS")
+      throw ExcAccess(data->xr.errorMsg);
     else
       THROW("Error " << data->xr.errorMsg);
   }
