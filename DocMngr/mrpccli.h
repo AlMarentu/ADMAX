@@ -29,6 +29,24 @@
 
 class MrpcClientData;
 
+class ExcCancelled : public std::runtime_error {
+public:
+  explicit ExcCancelled(const char *msg) : std::runtime_error(msg) {};
+  explicit ExcCancelled(const std::string &msg) : std::runtime_error(msg) {};
+};
+
+class ExcCert : public std::runtime_error {
+public:
+  explicit ExcCert(const char *msg) : std::runtime_error(msg) {};
+  explicit ExcCert(const std::string &msg) : std::runtime_error(msg) {};
+};
+
+class ExcConn : public std::runtime_error {
+public:
+  explicit ExcConn(const char *msg) : std::runtime_error(msg) {};
+  explicit ExcConn(const std::string &msg) : std::runtime_error(msg) {};
+};
+
 class MrpcClient : public QObject {
   Q_OBJECT
 

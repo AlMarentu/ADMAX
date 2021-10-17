@@ -105,9 +105,6 @@ MainWindow::MainWindow(QWidget *parent) :
 
   ui->pushButtonSave->setEnabled(false);
 
-//  ui->widget->showPdfFile(QString("../fritz.pdf"));
-//  ui->widget->showPdfFile("../Stunden.pdf");
-
 
   QTimer::singleShot(1, this, SLOT(initKey()));
 
@@ -880,10 +877,15 @@ void MainWindow::getConfiguration() {
     } else
       THROW("invalid result type");
 
+  } catch (ExcCert &e) {
+    LOG(LM_ERROR, "Exception in getConfig " << e.what());
+    QMessageBox::information(this, windowTitle(), tr("your certificate is unknown"));
+  } catch (ExcConn &e) {
+    LOG(LM_ERROR, "Exception in getConfig " << e.what());
+    QMessageBox::information(this, windowTitle(), tr("no more connections available - try again later"));
   } catch (std::exception &e) {
     LOG(LM_ERROR, "Exception in getConfig " << e.what());
-    QMessageBox::information(this, windowTitle(), QString::fromUtf8(e.what()));
-
+    QMessageBox::information(this, windowTitle(), tr("no connection"));
   }
   mrpc = nullptr;
 }
@@ -1019,10 +1021,12 @@ void MainWindow::searchDocument() {
     mrpc->waitDone();
     LOG(LM_INFO, "MAIN ready");
     mrpc->close();
+  } catch (ExcCancelled &e) {
+    LOG(LM_ERROR, "Exception in load " << e.what());
+    ui->statusbar->showMessage(tr("cancelled"), 10000);
   } catch (std::exception &e) {
     LOG(LM_ERROR, "Exception in load " << e.what());
     QMessageBox::information(this, windowTitle(), QString::fromUtf8(e.what()));
-
   }
   mrpc = nullptr;
 
@@ -1095,8 +1099,11 @@ void MainWindow::loadDocument(int64_t doc)
     LOG(LM_INFO, "MAIN ready");
 
     mrpc->close();
+  } catch (ExcCancelled &e) {
+    LOG(LM_ERROR, "Exception in load doc " << e.what());
+    ui->statusbar->showMessage(tr("cancelled"), 10000);
   } catch (std::exception &e) {
-    LOG(LM_ERROR, "Exception in load " << e.what());
+    LOG(LM_ERROR, "Exception in load doc " << e.what());
     QMessageBox::information(this, windowTitle(), QString::fromUtf8(e.what()));
 
   }

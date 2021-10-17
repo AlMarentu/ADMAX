@@ -63,8 +63,8 @@ public:
 ObjRegister(Session);
 
 
-MOBS_ENUM_DEF(SessionErrorIds, SErrUnknown, SErrNeedCredentioal);
-MOBS_ENUM_VAL(SessionErrorIds, "UNK",       "NEED_CREDENTIAL");
+MOBS_ENUM_DEF(SessionErrorIds, SErrUnknown, SErrNeedCredentioal, SErrInvalidCert, SErrNoMoreCon);
+MOBS_ENUM_VAL(SessionErrorIds, "UNK",       "NEED_CREDENTIAL",   "NOC_ERT",       "NO_CON");
 
 class SessionError : virtual public mobs::ObjectBase
 {

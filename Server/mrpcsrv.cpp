@@ -190,11 +190,13 @@ public:
   ~XmlInput() { if (ctx) ctx->release(); }
 
   void StartTag(const std::string &element) override {
-    LOG(LM_INFO, "start " << element);
+    LOG(LM_DEBUG, "start " << element);
     // Wenn passendes Tag gefunden, dann Objekt einlesen
     auto o = mobs::ObjectBase::createObj(element);
     if (o)
       fill(o);
+    else
+      LOG(LM_ERROR, "Object " << element << " not found");
   }
   void EndTag(const std::string &element) override {
     LOG(LM_INFO, "end " << element);
@@ -221,7 +223,7 @@ public:
     stop();
   }
   void filled(mobs::ObjectBase *obj, const string &error) override {
-    LOG(LM_INFO, "filled " << obj->to_string() << (encryptedInput ? " OK":" UNENCRYPTED"));
+    LOG(LM_INFO, "filled " << obj->getObjectName() << ": " << obj->to_string() << (encryptedInput ? " OK":" UNENCRYPTED"));
     if (not error.empty())
       THROW("error in XML stream: " << error);
 
@@ -240,11 +242,31 @@ public:
       Filestore store(conName);
       string keyFile;
       string user;
-      if (not store.findUser(data.login(), user, keyFile))
-        THROW("invalid login ident " << data.login());
+      if (not store.findUser(data.login(), user, keyFile)) {
+        SessionError error1;
+        error1.error(SErrInvalidCert);
+        error1.traverse(xo);
+        if (needDelimiter)
+          xmlResult.putc(0);
+        xmlResult.sync();
+        // weiteres parsen abbrechen
+        stop();
+        LOG(LM_INFO,"invalid login ident " << data.login());
+        return;
+      }
       u_int id;
-      if (not(ctx = server->newSession(id, data.login())))
-        THROW("no more sessions");
+      if (not(ctx = server->newSession(id, data.login()))) {
+        SessionError error1;
+        error1.error(SErrNoMoreCon);
+        error1.traverse(xo);
+        if (needDelimiter)
+          xmlResult.putc(0);
+        xmlResult.sync();
+        // weiteres parsen abbrechen
+        stop();
+        LOG(LM_INFO, "no more sessions");
+        return;
+      }
       ctx->user = user;
       SessionResult result;
       result.id(id);

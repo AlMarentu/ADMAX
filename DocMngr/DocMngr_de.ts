@@ -255,23 +255,43 @@ p, li { white-space: pre-wrap; }
     </message>
     <message>
         <location filename="mainwindow.cpp" line="868"/>
-        <location filename="mainwindow.cpp" line="927"/>
-        <location filename="mainwindow.cpp" line="1064"/>
+        <location filename="mainwindow.cpp" line="932"/>
+        <location filename="mainwindow.cpp" line="1071"/>
         <source>ms: %1 %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1083"/>
+        <location filename="mainwindow.cpp" line="885"/>
+        <source>your certificate is unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="mainwindow.cpp" line="888"/>
+        <source>no more connections available - try again later</source>
+        <translation type="unfinished">Keine freie Verbindung - Bitte versuchen Sie es zu einem späteren Zeitpunkt</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.cpp" line="891"/>
+        <source>no connection</source>
+        <translation type="unfinished">Keine Verbindung zum Server</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.cpp" line="1029"/>
+        <source>cancelled</source>
+        <translation type="unfinished">Abgebrochen</translation>
+    </message>
+    <message>
+        <location filename="mainwindow.cpp" line="1090"/>
         <source>ms: %1 %2 %3</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1134"/>
+        <location filename="mainwindow.cpp" line="1141"/>
         <source>Server Settings</source>
         <translation type="unfinished">Server Einstellungen</translation>
     </message>
     <message>
-        <location filename="mainwindow.cpp" line="1135"/>
+        <location filename="mainwindow.cpp" line="1142"/>
         <source>host:port</source>
         <translation type="unfinished"></translation>
     </message>
@@ -279,12 +299,12 @@ p, li { white-space: pre-wrap; }
 <context>
     <name>MrpcClient</name>
     <message>
-        <location filename="mrpccli.cpp" line="294"/>
+        <location filename="mrpccli.cpp" line="305"/>
         <source>Verbindung</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="mrpccli.cpp" line="294"/>
+        <location filename="mrpccli.cpp" line="305"/>
         <source>Abbruch</source>
         <translation type="unfinished"></translation>
     </message>

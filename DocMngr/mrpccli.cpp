@@ -191,6 +191,17 @@ public:
       {
         XmlInput::sessionKey.clear();
         XmlInput::sessionId = 0;
+        skipDelim = true;
+      } else if (sess->error() == SErrInvalidCert) {
+        XmlInput::sessionKey.clear();
+        XmlInput::sessionId = 0;
+        errorMsg = "CERT";
+        skipDelim = true;
+      } else if (sess->error() == SErrNoMoreCon) {
+        XmlInput::sessionKey.clear();
+        XmlInput::sessionId = 0;
+        errorMsg = "CONS";
+        skipDelim = true;
       }
       // parsen abbrechen
       stop();
@@ -381,6 +392,7 @@ void MrpcClient::sendLogin() {
   sess.login(MrpcClient::fingerprint);
   sess.software("ADMAXclient");
 
+  // Session-Info mit Server-pubkey verschlüsseln
   std::string buffer = sess.to_string(mobs::ConvObjToString().exportJson().noIndent());
   std::vector<u_char> inhalt;
   copy(buffer.begin(), buffer.end(), back_inserter(inhalt));
@@ -490,7 +502,7 @@ int MrpcClient::exec() {
     if (not XmlInput::sessionId and data->state == MrpcClientData::Online and data->xr.errorMsg.empty()) {
       LOG(LM_INFO, "resend login");
       sendLogin();
-      r = eventLoop->exec(QEventLoop::WaitForMoreEvents);
+        r = eventLoop->exec(QEventLoop::WaitForMoreEvents);
       if (XmlInput::sessionId and data->xr.errorMsg.empty()) {
         data->state = MrpcClientData::Online;
         LOG(LM_INFO, "login ok");
@@ -503,7 +515,14 @@ int MrpcClient::exec() {
    LOG(LM_INFO, "EXEC ende");
   if (not data->xr.errorMsg.empty()) {
     error();
-    THROW("Error " << data->xr.errorMsg);
+    if (data->xr.errorMsg == "cancelled")
+      throw ExcCancelled(data->xr.errorMsg);
+    else if (data->xr.errorMsg == "CERT")
+      throw ExcCert(data->xr.errorMsg);
+    else if (data->xr.errorMsg == "CONS")
+      throw ExcConn(data->xr.errorMsg);
+    else
+      THROW("Error " << data->xr.errorMsg);
   }
   return r;
 }
